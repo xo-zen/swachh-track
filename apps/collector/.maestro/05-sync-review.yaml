@@ -1,0 +1,18 @@
+appId: in.swachhtrack.collector
+---
+# Operator disables airplane mode and restores real network first.
+# Offline evidence is NOT automatically VERIFIED. Review is the expected contract.
+- launchApp
+- extendedWaitUntil:
+    notVisible:
+      id: offline-banner
+    timeout: 30000
+- tapOn:
+    id: diagnostics
+- tapOn:
+    id: retry-pending
+- extendedWaitUntil:
+    visible: 'Upload status: SYNCED'
+    timeout: 120000
+- assertVisible: 'Server verdict: NEEDS REVIEW'
+- assertVisible: Supervisor approval is required.*

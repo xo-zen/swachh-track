@@ -1,0 +1,24 @@
+appId: in.swachhtrack.collector
+---
+# Start in the capture screen, after property identification on a NEW stop.
+# Run 03-live-photo for doorway and exception, then 04-save-restart.
+- scrollUntilVisible:
+    element:
+      id: record-exception
+    direction: DOWN
+- tapOn:
+    id: record-exception
+- scrollUntilVisible:
+    element:
+      id: exception-WEIGHT_UNAVAILABLE
+    direction: UP
+- tapOn:
+    id: exception-WEIGHT_UNAVAILABLE
+- scrollUntilVisible:
+    element:
+      id: exception-note
+    direction: DOWN
+- tapOn:
+    id: exception-note
+- inputText: Scale battery failed; no weight measurement available.
+- hideKeyboard

@@ -1,0 +1,26 @@
+appId: in.swachhtrack.collector
+---
+# Standalone step. Operator physically aims at the correct, distinct evidence BEFORE each run.
+# PHOTO_BUTTON: doorstep-photo, scale-photo-WET, scale-photo-DRY, or exception-photo.
+# Camera permission must already be granted on the test device.
+- scrollUntilVisible:
+    element:
+      id: capture-back
+    direction: UP
+- scrollUntilVisible:
+    element:
+      id: ${PHOTO_BUTTON}
+    direction: DOWN
+- tapOn:
+    id: ${PHOTO_BUTTON}
+- extendedWaitUntil:
+    visible:
+      id: camera-shutter
+    timeout: 15000
+- tapOn:
+    id: camera-shutter
+- extendedWaitUntil:
+    notVisible:
+      id: camera-shutter
+    timeout: 15000
+- assertVisible: Photo saved.*

@@ -1,0 +1,13 @@
+appId: in.swachhtrack.collector
+---
+# Start on the English route screen, signed in and registered.
+- launchApp
+- tapOn:
+    id: language
+- assertVisible: आज का मार्ग
+- stopApp
+- launchApp
+- assertVisible: आज का मार्ग
+- tapOn:
+    id: language
+- assertVisible: Today's route

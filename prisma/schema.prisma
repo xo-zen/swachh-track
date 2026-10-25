@@ -1,0 +1,746 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  RESIDENT
+  SOCIETY_ADMIN
+  COLLECTOR
+  SUPERVISOR
+  ULB_ADMIN
+  SUPER_ADMIN
+}
+
+enum Stream {
+  WET
+  DRY
+  SANITARY
+  SPECIAL_CARE
+}
+
+enum PickupStatus {
+  VERIFIED
+  NEEDS_REVIEW
+  REJECTED
+}
+
+enum ComplaintStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  WAITING_FOR_RESIDENT
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+model Ulb {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  state       String
+  code        String   @unique
+  settings    Json     @default("{}")
+  flags       Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  wards       Ward[]
+  societies   Society[]
+  memberships Membership[]
+}
+
+model Ward {
+  id        String   @id @default(uuid()) @db.Uuid
+  ulbId     String   @db.Uuid
+  ulb       Ulb      @relation(fields: [ulbId], references: [id])
+  name      String
+  code      String
+  boundary  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  societies Society[]
+  @@unique([ulbId, code])
+  @@index([ulbId])
+}
+
+model Society {
+  id                String   @id @default(uuid()) @db.Uuid
+  ulbId             String   @db.Uuid
+  ulb               Ulb      @relation(fields: [ulbId], references: [id])
+  wardId            String   @db.Uuid
+  ward              Ward     @relation(fields: [wardId], references: [id])
+  name              String
+  address           String
+  latitude          Float
+  longitude         Float
+  floorAreaSqm      Float    @default(0)
+  waterLpd          Float    @default(0)
+  wasteKgDay        Float    @default(0)
+  settings          Json     @default("{}")
+  registration      Json     @default("{}")
+  deletedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  properties        Property[]
+  @@index([ulbId, wardId])
+}
+
+model Property {
+  id           String   @id @default(uuid()) @db.Uuid
+  ulbId        String   @db.Uuid
+  societyId    String   @db.Uuid
+  society      Society  @relation(fields: [societyId], references: [id])
+  unitNo       String
+  block        String   @default("")
+  floor        Int      @default(0)
+  latitude     Float
+  longitude    Float
+  propertyCode String
+  qrTokenHash  String
+  qrVersion    String
+  status       String   @default("ACTIVE")
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  residents    Resident[]
+  routeStops   RouteStop[]
+  @@unique([societyId, block, unitNo])
+  @@unique([ulbId, propertyCode])
+  @@index([ulbId, societyId, status])
+}
+
+model User {
+  id                      String   @id @default(uuid()) @db.Uuid
+  phone                   String   @unique
+  email                   String?  @unique
+  name                    String
+  locale                  String   @default("en")
+  status                  String   @default("ACTIVE")
+  notificationPreferences Json     @default("{\"inApp\":true,\"email\":false,\"whatsapp\":false}")
+  consentAt               DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  memberships             Membership[]
+  residents               Resident[]
+}
+
+model Membership {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id])
+  ulbId        String   @db.Uuid
+  ulb          Ulb      @relation(fields: [ulbId], references: [id])
+  role         Role
+  societyId    String?  @db.Uuid
+  contractorId String?  @db.Uuid
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([userId, status])
+  @@index([ulbId, societyId])
+}
+
+model Resident {
+  id         String   @id @default(uuid()) @db.Uuid
+  ulbId      String   @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id])
+  propertyId String   @db.Uuid
+  property   Property @relation(fields: [propertyId], references: [id])
+  ownership  String   @default("TENANT")
+  moveInAt   DateTime @default(now())
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@unique([userId, propertyId])
+  @@index([ulbId, propertyId])
+}
+
+model OtpChallenge {
+  id          String   @id @default(uuid()) @db.Uuid
+  phone       String   @unique
+  codeHash    String
+  expiresAt   DateTime
+  requestedAt DateTime @default(now())
+  windowStartedAt DateTime @default(now())
+  requestCount Int @default(1)
+  attempts    Int      @default(0)
+  consumedAt  DateTime?
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  tokenHash  String   @unique
+  familyId   String   @db.Uuid
+  expiresAt  DateTime
+  usedAt     DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  @@index([familyId])
+  @@index([userId])
+}
+
+model Contractor {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  name        String
+  contractNo  String
+  validFrom   DateTime
+  validTo     DateTime
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  collectors  Collector[]
+  @@unique([ulbId, contractNo])
+}
+
+model Collector {
+  id           String     @id @default(uuid()) @db.Uuid
+  ulbId        String     @db.Uuid
+  contractorId String     @db.Uuid
+  contractor   Contractor @relation(fields: [contractorId], references: [id])
+  userId       String     @db.Uuid
+  employeeCode String
+  status       String     @default("ACTIVE")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  @@unique([ulbId, userId])
+  @@index([ulbId, contractorId])
+}
+
+model Vehicle {
+  id             String   @id @default(uuid()) @db.Uuid
+  ulbId          String   @db.Uuid
+  contractorId   String   @db.Uuid
+  registrationNo String
+  type           String
+  capacityKg     Decimal  @db.Decimal(10, 3)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@unique([ulbId, registrationNo])
+}
+
+model Vendor {
+  id                  String   @id @default(uuid()) @db.Uuid
+  ulbId               String   @db.Uuid
+  societyId           String   @db.Uuid
+  contractorId        String?  @db.Uuid
+  name                String
+  type                String
+  authorizationNumber String
+  validFrom           DateTime @default(now())
+  validUntil          DateTime
+  documentId          String?  @db.Uuid
+  status              String   @default("ACTIVE")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  @@index([ulbId, societyId])
+}
+
+model Schedule {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  societyId   String   @db.Uuid
+  stream      Stream
+  pattern     String
+  weekdays    Int[]
+  everyNDays  Int?
+  windowStart String
+  windowEnd   String
+  activeFrom  DateTime
+  activeTo    DateTime?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([ulbId, societyId, active])
+}
+
+model Route {
+  id           String   @id @default(uuid()) @db.Uuid
+  ulbId        String   @db.Uuid
+  contractorId String   @db.Uuid
+  collectorId  String   @db.Uuid
+  wardId       String   @db.Uuid
+  vehicleId    String?  @db.Uuid
+  name         String
+  date         DateTime @db.Date
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  stops        RouteStop[]
+  @@index([ulbId, collectorId, date])
+}
+
+model RouteStop {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  routeId     String   @db.Uuid
+  route       Route    @relation(fields: [routeId], references: [id])
+  propertyId  String   @db.Uuid
+  property    Property @relation(fields: [propertyId], references: [id])
+  sequence    Int
+  windowStart DateTime
+  windowEnd   DateTime
+  streams     Stream[]
+  status      String   @default("PENDING")
+  reason      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([routeId, propertyId])
+  @@unique([routeId, sequence])
+  @@index([ulbId, propertyId, windowStart])
+}
+
+model Device {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  collectorId String   @db.Uuid
+  deviceId    String
+  platform    String
+  appVersion  String
+  lastSeenAt  DateTime @default(now())
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([ulbId, deviceId])
+  @@index([ulbId, collectorId])
+}
+
+model PickupEvent {
+  id                  String       @id @default(uuid()) @db.Uuid
+  ulbId               String       @db.Uuid
+  societyId           String       @db.Uuid
+  propertyId          String       @db.Uuid
+  collectorId         String       @db.Uuid
+  routeStopId         String       @db.Uuid
+  clientUuid          String       @db.Uuid
+  scheduledFor        DateTime
+  capturedAt          DateTime
+  receivedAt          DateTime     @default(now())
+  latitude            Float
+  longitude           Float
+  accuracyM           Float
+  gpsCapturedAt       DateTime
+  deviceId            String
+  qrTokenHash         String
+  offline             Boolean
+  status              PickupStatus
+  verificationScore   Int
+  verificationReasons Json
+  exceptionCode       String?
+  exceptionNote       String?
+  exceptionAccepted   Boolean      @default(false)
+  reviewReason        String?
+  reviewedBy          String?      @db.Uuid
+  reviewedAt          DateTime?
+  batchId             String       @db.Uuid
+  provenance          String       @default("VERIFIED")
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  streams             PickupStream[]
+  @@unique([ulbId, clientUuid])
+  @@index([ulbId, societyId, capturedAt, status])
+  @@index([ulbId, routeStopId])
+  @@index([ulbId, collectorId, receivedAt])
+}
+
+model PickupStream {
+  id                String      @id @default(uuid()) @db.Uuid
+  ulbId             String      @db.Uuid
+  pickupEventId     String      @db.Uuid
+  pickupEvent       PickupEvent @relation(fields: [pickupEventId], references: [id])
+  stream            Stream
+  kg                Decimal     @db.Decimal(10, 3)
+  segregation       String
+  contamination     Boolean
+  contaminationNote String?
+  photoId           String?     @db.Uuid
+  createdAt         DateTime    @default(now())
+  @@unique([pickupEventId, stream])
+  @@index([ulbId, stream])
+}
+
+model Photo {
+  id            String   @id @default(uuid()) @db.Uuid
+  ulbId         String   @db.Uuid
+  ownerId       String   @db.Uuid
+  clientUuid    String?  @db.Uuid
+  pickupEventId String?  @db.Uuid
+  propertyId    String?  @db.Uuid
+  kind          String
+  stream        Stream?
+  captureSource String
+  storageKey    String   @unique
+  sha256        String?
+  width         Int?
+  height        Int?
+  size          Int?
+  status        String   @default("RESERVED")
+  expiresAt     DateTime
+  confirmedAt   DateTime?
+  claimedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([ulbId, clientUuid, ownerId])
+  @@index([ulbId, propertyId, sha256, claimedAt])
+}
+
+model Upload {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  ownerId     String   @db.Uuid
+  filename    String
+  contentType String
+  purpose     String
+  storageKey  String   @unique
+  size        Int
+  sha256      String?
+  status      String   @default("RESERVED")
+  scanStatus  String   @default("NOT_CONFIGURED")
+  expiresAt   DateTime
+  confirmedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([ulbId, ownerId])
+}
+
+model PickupException {
+  id              String   @id @default(uuid()) @db.Uuid
+  ulbId           String   @db.Uuid
+  pickupEventId   String   @unique @db.Uuid
+  code            String
+  note            String
+  photoId         String   @db.Uuid
+  supervisorStatus String  @default("PENDING")
+  supervisorNote String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([ulbId])
+}
+
+model IdempotencyKey {
+  id           String   @id @default(uuid()) @db.Uuid
+  ulbId        String   @db.Uuid
+  actorId      String   @db.Uuid
+  operation    String
+  key          String
+  requestHash  String
+  response     Json
+  responseCode Int      @default(200)
+  createdAt    DateTime @default(now())
+  @@unique([ulbId, actorId, operation, key])
+}
+
+model RejectedSubmission {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  actorId     String   @db.Uuid
+  clientUuid  String   @db.Uuid
+  batchId     String   @db.Uuid
+  result      Json
+  createdAt   DateTime @default(now())
+  @@unique([ulbId, clientUuid])
+}
+
+model ComplaintCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  ulbId     String   @db.Uuid
+  name      String
+  slaHours  Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([ulbId, name])
+}
+
+model Complaint {
+  id                String          @id @default(uuid()) @db.Uuid
+  ulbId             String          @db.Uuid
+  societyId         String          @db.Uuid
+  propertyId        String          @db.Uuid
+  pickupEventId     String?         @db.Uuid
+  residentId        String          @db.Uuid
+  categoryId        String          @db.Uuid
+  slaHours          Int             @default(12)
+  description       String
+  photoId           String?         @db.Uuid
+  status            ComplaintStatus @default(OPEN)
+  slaDueAt          DateTime
+  pausedAt          DateTime?
+  pausedSeconds     Int             @default(0)
+  slaPauses         Json            @default("[]")
+  waitingFrom       String?
+  resolvedAt        DateTime?
+  resolutionNote    String?
+  resolutionPhotoId String?         @db.Uuid
+  reopenedCount     Int             @default(0)
+  escalationLevel   Int             @default(0)
+  supervisorNotifiedAt DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  events            ComplaintEvent[]
+  @@index([ulbId, societyId, status, slaDueAt])
+  @@index([ulbId, residentId])
+}
+
+model ComplaintEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  ulbId       String    @db.Uuid
+  complaintId String    @db.Uuid
+  complaint   Complaint @relation(fields: [complaintId], references: [id])
+  actorId     String    @db.Uuid
+  fromStatus  String?
+  toStatus    String
+  note        String
+  createdAt   DateTime  @default(now())
+  @@index([ulbId, complaintId])
+}
+
+model Rating {
+  id            String   @id @default(uuid()) @db.Uuid
+  ulbId         String   @db.Uuid
+  pickupEventId String   @db.Uuid
+  residentId    String   @db.Uuid
+  punctuality   Int
+  quality       Int
+  guidance      Int
+  comment       String?
+  moderated     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@unique([pickupEventId, residentId])
+  @@index([ulbId])
+}
+
+model Invoice {
+  id               String   @id @default(uuid()) @db.Uuid
+  ulbId            String   @db.Uuid
+  societyId        String   @db.Uuid
+  periodStart      DateTime @db.Date
+  periodEnd        DateTime @db.Date
+  status           String   @default("DRAFT")
+  subtotalPaise    Int
+  deductionsPaise  Int
+  totalPaise       Int
+  issuedAt         DateTime?
+  dueAt            DateTime
+  paidAt           DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lines            InvoiceLine[]
+  payments         Payment[]
+  @@unique([ulbId, societyId, periodStart])
+}
+
+model InvoiceLine {
+  id              String   @id @default(uuid()) @db.Uuid
+  ulbId           String   @db.Uuid
+  invoiceId       String   @db.Uuid
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id])
+  type            String
+  description     String
+  quantity        Decimal  @db.Decimal(12, 3)
+  unit            String
+  ratePaise       Int
+  amountPaise     Int
+  evidence        Json
+  createdAt       DateTime @default(now())
+  @@index([ulbId, invoiceId])
+}
+
+model Payment {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  invoiceId   String   @db.Uuid
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  amountPaise Int
+  reference   String
+  method      String
+  recordedBy  String   @db.Uuid
+  paidAt      DateTime
+  createdAt   DateTime @default(now())
+  @@unique([ulbId, reference])
+}
+
+model InvoiceDispute {
+  id         String   @id @default(uuid()) @db.Uuid
+  ulbId      String   @db.Uuid
+  invoiceId  String   @db.Uuid
+  lineId     String   @db.Uuid
+  actorId    String   @db.Uuid
+  reason     String
+  status     String   @default("OPEN")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([ulbId, invoiceId])
+}
+
+model ComplianceDocument {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  societyId   String   @db.Uuid
+  type        String
+  number      String
+  issuedBy    String
+  issuedAt    DateTime
+  validUntil  DateTime?
+  photoId     String?  @db.Uuid
+  uploadId    String?  @db.Uuid
+  storageKey  String?
+  status      String   @default("SELF_REPORTED")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([ulbId, societyId])
+}
+
+model EbwgrCertificate {
+  id            String   @id @default(uuid()) @db.Uuid
+  ulbId         String   @db.Uuid
+  societyId     String   @db.Uuid
+  certificateNo String
+  stream        Stream
+  kg            Decimal  @db.Decimal(10, 3)
+  issuedBy      String
+  issuedAt      DateTime
+  validUntil    DateTime
+  documentId    String   @db.Uuid
+  status        String   @default("RECORDED")
+  recordedBy    String   @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@unique([ulbId, certificateNo])
+  @@index([ulbId, societyId, validUntil])
+}
+
+model Handover {
+  id           String   @id @default(uuid()) @db.Uuid
+  ulbId        String   @db.Uuid
+  societyId    String   @db.Uuid
+  vendorId     String   @db.Uuid
+  stream       Stream
+  kg           Decimal  @db.Decimal(10, 3)
+  date         DateTime
+  receiptNo    String
+  destination  String   @default("")
+  documentId   String   @db.Uuid
+  verifiedAt   DateTime?
+  verifiedBy   String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@unique([ulbId, vendorId, receiptNo])
+  @@index([ulbId, societyId, date])
+}
+
+model OnsiteLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  societyId   String   @db.Uuid
+  asset       String
+  capacityKg  Decimal  @db.Decimal(10, 3)
+  date        DateTime @db.Date
+  inputKg     Decimal  @db.Decimal(10, 3)
+  outputKg    Decimal  @db.Decimal(10, 3)
+  downtime    String?
+  photoId     String   @db.Uuid
+  provenance  String   @default("SELF_REPORTED")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([ulbId, societyId, date])
+}
+
+model AnnualReturn {
+  id            String   @id @default(uuid()) @db.Uuid
+  ulbId         String   @db.Uuid
+  societyId     String   @db.Uuid
+  financialYear Int
+  status        String   @default("DRAFT")
+  payload       Json
+  generatedAt   DateTime @default(now())
+  @@unique([ulbId, societyId, financialYear])
+}
+
+model MassBalance {
+  id           String   @id @default(uuid()) @db.Uuid
+  ulbId        String   @db.Uuid
+  societyId    String   @db.Uuid
+  period       String
+  stream       Stream
+  collectedKg  Decimal  @db.Decimal(12, 3)
+  handedOverKg Decimal  @db.Decimal(12, 3)
+  processedKg  Decimal  @db.Decimal(12, 3)
+  variancePct  Float?
+  updatedAt    DateTime @updatedAt
+  @@unique([ulbId, societyId, period, stream])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  ulbId      String   @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  entity     String
+  entityId   String
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+  @@index([ulbId, createdAt])
+}
+
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  userId      String   @db.Uuid
+  dedupeKey   String   @unique
+  channel     String   @default("IN_APP")
+  template    String
+  payload     Json
+  status      String   @default("PENDING")
+  attempts    Int      @default(0)
+  scheduledAt DateTime @default(now())
+  sentAt      DateTime?
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deliveries  NotificationAttempt[]
+  @@index([status, scheduledAt])
+  @@index([ulbId, userId])
+}
+
+model NotificationAttempt {
+  id             String       @id @default(uuid()) @db.Uuid
+  ulbId          String       @db.Uuid
+  notificationId String       @db.Uuid
+  notification   Notification @relation(fields: [notificationId], references: [id])
+  status         String
+  detail         String
+  createdAt      DateTime     @default(now())
+  @@index([ulbId, notificationId])
+}
+
+model OutboundMessage {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  channel     String
+  entityId    String
+  payload     Json
+  status      String   @default("NOT_CONFIGURED")
+  createdAt   DateTime @default(now())
+  @@index([ulbId, channel])
+}
+
+model PrivacyRequest {
+  id          String   @id @default(uuid()) @db.Uuid
+  ulbId       String   @db.Uuid
+  userId      String   @db.Uuid
+  type        String
+  status      String   @default("REQUESTED")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([ulbId, userId])
+}

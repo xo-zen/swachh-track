@@ -1,0 +1,38 @@
+appId: in.swachhtrack.collector
+---
+# Start signed out, in English, on a disposable pilot/test account. Never clear app data.
+- launchApp
+- tapOn:
+    id: phone
+- inputText: ${PHONE}
+- hideKeyboard
+- tapOn:
+    id: request-otp
+- extendedWaitUntil:
+    visible:
+      id: otp-code
+    timeout: 15000
+- tapOn:
+    id: otp-code
+- inputText: ${OTP}
+- hideKeyboard
+- tapOn:
+    id: verify-otp
+- extendedWaitUntil:
+    visible:
+      id: membership-${MEMBERSHIP_ID}
+    timeout: 15000
+- tapOn:
+    id: membership-${MEMBERSHIP_ID}
+- tapOn:
+    id: register-device
+- extendedWaitUntil:
+    visible:
+      id: refresh-route
+    timeout: 15000
+- tapOn:
+    id: refresh-route
+- extendedWaitUntil:
+    visible:
+      id: stop-${STOP_ID}
+    timeout: 15000

@@ -1,0 +1,54 @@
+appId: in.swachhtrack.collector
+---
+# Operator enables airplane mode first. Requires a current WET + DRY assigned stop.
+- launchApp
+- assertVisible:
+    id: offline-banner
+- scrollUntilVisible:
+    element:
+      id: stop-${STOP_ID}
+    direction: DOWN
+- tapOn:
+    id: stop-${STOP_ID}
+- tapOn:
+    id: property-code
+- inputText: ${PROPERTY_CODE}
+- hideKeyboard
+- tapOn:
+    id: check-property-code
+- assertVisible: Property matched to this route
+- scrollUntilVisible:
+    element:
+      id: weight-WET
+    direction: DOWN
+- tapOn:
+    id: weight-WET
+- inputText: '4.200'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: weight-DRY
+    direction: DOWN
+- tapOn:
+    id: weight-DRY
+- inputText: '1.800'
+- hideKeyboard
+- stopApp
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: stop-${STOP_ID}
+    direction: DOWN
+- tapOn:
+    id: stop-${STOP_ID}
+- assertVisible: Property matched to this route
+- scrollUntilVisible:
+    element:
+      id: weight-WET
+    direction: DOWN
+- assertVisible: '4.200'
+- scrollUntilVisible:
+    element:
+      id: weight-DRY
+    direction: DOWN
+- assertVisible: '1.800'

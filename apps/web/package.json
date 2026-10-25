@@ -1,0 +1,25 @@
+{
+  "name": "@swachh/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "dev": "next dev --hostname 0.0.0.0", "build": "next build", "start": "next start --hostname 0.0.0.0", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@swachh/contracts": "workspace:*",
+    "@swachh/domain": "workspace:*",
+    "@swachh/ui": "workspace:*",
+    "@tanstack/react-query": "5.77.2",
+    "lucide-react": "0.511.0",
+    "maplibre-gl": "5.5.0",
+    "next": "15.5.14",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "recharts": "2.15.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.5",
+    "@types/react-dom": "19.1.5",
+    "autoprefixer": "10.4.21",
+    "postcss": "8.5.3",
+    "tailwindcss": "3.4.17"
+  }
+}

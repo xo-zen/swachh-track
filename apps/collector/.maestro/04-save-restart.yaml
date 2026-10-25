@@ -1,0 +1,36 @@
+appId: in.swachhtrack.collector
+---
+# Run AFTER real doorstep/scale evidence has been captured, physically at the assigned stop.
+# GPS/location permissions must already be granted. Do not inject a fake location.
+- assertVisible:
+    id: offline-banner
+- scrollUntilVisible:
+    element:
+      id: capture-back
+    direction: UP
+- scrollUntilVisible:
+    element:
+      id: capture-gps
+    direction: DOWN
+- tapOn:
+    id: capture-gps
+- extendedWaitUntil:
+    visible: GPS captured at.*
+    timeout: 35000
+- scrollUntilVisible:
+    element:
+      id: save-pickup
+    direction: DOWN
+- tapOn:
+    id: save-pickup
+- extendedWaitUntil:
+    visible: Saved safely on this phone
+    timeout: 15000
+- tapOn:
+    id: diagnostics
+- assertVisible: 'Upload status: PENDING'
+- stopApp
+- launchApp
+- tapOn:
+    id: diagnostics
+- assertVisible: 'Upload status: PENDING'
