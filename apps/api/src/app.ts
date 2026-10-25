@@ -34,7 +34,7 @@ export async function buildApp(options: { db?: PrismaClient; config?: Partial<Co
   });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-  await app.register(cors, { origin: config.CORS_ORIGINS.split(',').map(x => x.trim()), allowedHeaders: ['Content-Type', 'Authorization', 'X-Membership-Id', 'Idempotency-Key'], exposedHeaders: ['Content-Disposition'] });
+  await app.register(cors, { origin: config.CORS_ORIGINS.split(',').map(x => x.trim()), allowedHeaders: ['Content-Type', 'Authorization', 'X-Membership-Id', 'X-Demo-Role', 'Idempotency-Key'], exposedHeaders: ['Content-Disposition'] });
   await app.register(helmet);
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(jwt, { secret: config.JWT_SECRET });

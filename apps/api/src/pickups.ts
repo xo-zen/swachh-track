@@ -151,7 +151,11 @@ export async function pickupRoutes(app: App) {
   });
   router.post('/collector/stops/:stopId/exception', { preHandler: collectorGuard, schema: { params: z.object({ stopId: uuid }).strict(), body: pickupSchema } }, async (request, reply) => {
     if (!request.body.exception || request.body.routeStopId !== request.params.stopId) return fail(422, 'EXCEPTION_REQUIRED', 'Supply the full evidence event and matching routeStopId.');
-    const result = await app.inject({ method: 'POST', url: '/api/v1/collector/pickups/batch', headers: { authorization: request.headers.authorization!, 'x-membership-id': new Scope(request).membership.id, 'idempotency-key': idempotencyHeader(request) }, payload: { events: [request.body] } });
+    const result = await app.inject({ method: 'POST', url: '/api/v1/collector/pickups/batch', headers: {
+      ...(request.headers.authorization ? { authorization: request.headers.authorization } : {}),
+      ...(request.headers['x-demo-role'] !== undefined ? { 'x-demo-role': request.headers['x-demo-role'] } : {}),
+      'x-membership-id': new Scope(request).membership.id, 'idempotency-key': idempotencyHeader(request),
+    }, payload: { events: [request.body] } });
     return reply.code(result.statusCode).type('application/json').send(result.body);
   });
   router.get('/supervisor/pickups', { preHandler: authorize('SUPERVISOR', 'ULB_ADMIN', 'SUPER_ADMIN'), schema: { querystring: pagination } }, async request => {

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, KeyboardAvoidingView, Platform, StatusBar, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import { CollectorApi, clearMembership, chooseMembership, deviceId, logout, parseRoutes, requestOtp, restoreAuth, scopeOf, verifyOtp } from './src/api';
+import { CollectorApi, bootstrapCollector, clearMembership, chooseMembership, deviceId, logout, parseRoutes, requestOtp, scopeOf, verifyOtp } from './src/api';
 import { cacheRoutes, cachedRoutes, getDatabase, listEvents, loadDraft, saveDraft } from './src/storage';
 import { indiaDate, record, type AuthSession, type CaptureDraft, type QueueEvent, type Route, type RouteStop } from './src/model';
 import { formatTime, translatedError, translator, type Language, type Translate } from './src/i18n';
@@ -48,7 +48,7 @@ function Login({ t, onAuth }: { t: Translate; onAuth: (auth: AuthSession) => voi
   </Page>;
 }
 
-function CollectorHome({ auth, device, online, t, language, onLogout, onMembership }: { auth: AuthSession; device: string; online: boolean; t: Translate; language: Language; onLogout: () => void; onMembership: () => void }) {
+function CollectorHome({ auth, device, online, t, language, onLogout, onMembership, onRestart }: { auth: AuthSession; device: string; online: boolean; t: Translate; language: Language; onLogout: () => void; onMembership: () => void; onRestart: () => void }) {
   const [api] = useState(() => new CollectorApi(auth));
   const [routes, setRoutes] = useState<Route[]>([]);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -167,14 +167,19 @@ function CollectorHome({ auth, device, online, t, language, onLogout, onMembersh
           </Panel>;
         })}
       </View>)}
-      <Action label={t('changeMembership')} secondary disabled={busy || syncing || isSyncing()} onPress={onMembership} />
-      <Action label={t('logout')} secondary disabled={busy || syncing || isSyncing()} testID="logout" onPress={onLogout} />
+      {auth.mode === 'authenticated' ? <>
+        <Action label={t('changeMembership')} secondary disabled={busy || syncing || isSyncing()} onPress={onMembership} />
+        <Action label={t('logout')} secondary disabled={busy || syncing || isSyncing()} testID="logout" onPress={onLogout} />
+      </> : <Action label={t('restart')} secondary testID="retry-startup" disabled={busy || syncing || isSyncing()} onPress={onRestart} />}
     </Page>}
   </>;
 }
 
 export default function App() {
   const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [mode, setMode] = useState<AuthSession['mode'] | null>(null);
+  const [cachedSession, setCachedSession] = useState(false);
+  const booting = useRef(false);
   const [device, setDevice] = useState('');
   const [language, setLanguage] = useState<Language>('en');
   const [online, setOnline] = useState(false);
@@ -183,12 +188,16 @@ export default function App() {
   const [error, setError] = useState('');
   const t = translator(language);
   async function boot(): Promise<void> {
-    setLoading(true); setError('');
+    if (booting.current) return;
+    if (isSyncing()) { setError('syncBusy'); return; }
+    booting.current = true;
+    setLoading(true); setError(''); setMode(null); setAuth(null); setCachedSession(false);
     try {
-      const [session, id, locale] = await Promise.all([restoreAuth(), deviceId(), SecureStore.getItemAsync('swachh.language'), getDatabase()]);
-      setAuth(session); setDevice(id); setLanguage(locale === 'hi' ? 'hi' : 'en');
+      const [id, locale] = await Promise.all([deviceId(), SecureStore.getItemAsync('swachh.language'), getDatabase()]);
+      const booted = await bootstrapCollector();
+      setAuth(booted.session); setMode(booted.mode); setCachedSession(booted.cached); setDevice(id); setLanguage(locale === 'hi' ? 'hi' : 'en');
     } catch (cause) { setError(errorMessage(cause)); }
-    finally { setLoading(false); }
+    finally { booting.current = false; setLoading(false); }
   }
   useEffect(() => { void boot(); return NetInfo.addEventListener((state) => setOnline(Boolean(state.isConnected) && state.isInternetReachable !== false)); }, []);
   async function act(action: () => Promise<AuthSession | null>): Promise<void> {
@@ -208,19 +217,23 @@ export default function App() {
       }} />
     </View>
     {!online ? <View testID="offline-banner"><Notice>{t('offlineBanner')}</Notice></View> : null}
+    {cachedSession ? <Notice>{t('cachedSession')}</Notice> : null}
     {error ? <Notice error>{translatedError(error, t)}</Notice> : null}
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {loading ? <Page><Busy label={t('loading')} /></Page> : !device ? <Page><Action label={t('restart')} onPress={() => { void boot(); }} /></Page> : !auth ? <Login t={t} onAuth={setAuth} /> : !auth.membershipId ? <Page>
+      {loading ? <Page><Busy label={t('loading')} /></Page> : !device || !mode || (mode === 'open-demo' && !auth?.membershipId) ? <Page><Notice>{t('startupRequired')}</Notice><Action label={t('restart')} testID="retry-startup" onPress={() => { void boot(); }} /></Page> : !auth ? <Login t={t} onAuth={setAuth} /> : !auth.membershipId ? <Page>
         <Text style={styles.title}>{t('membership')}</Text>
         {auth.memberships.filter((membership) => membership.role === 'COLLECTOR').map((membership) => <Action key={membership.id} label={membership.name ?? membership.id} testID={`membership-${membership.id}`} disabled={busy} onPress={() => { void act(() => chooseMembership(membership.id)); }} />)}
         {!auth.memberships.some((membership) => membership.role === 'COLLECTOR') ? <Notice>{t('noMembership')}</Notice> : null}
         <Action label={t('logout')} secondary disabled={busy} onPress={() => { void act(async () => { await logout(); return null; }); }} />
       </Page> : !registered ? <Page>
+        {auth.mode === 'open-demo' ? <Notice>{t('consent')}</Notice> : null}
         <Notice>{t('registrationRequired')}</Notice>
         <Action label={t(busy ? 'working' : 'register')} testID="register-device" disabled={busy || !online} onPress={() => { void act(() => new CollectorApi(auth).register()); }} />
-        <Action label={t('changeMembership')} secondary disabled={busy} onPress={() => { void act(clearMembership); }} />
-        <Action label={t('logout')} secondary disabled={busy} onPress={() => { void act(async () => { await logout(); return null; }); }} />
-      </Page> : <CollectorHome key={scopeOf(auth)} auth={auth} device={device} online={online} t={t} language={language} onLogout={() => { void act(async () => { await logout(); return null; }); }} onMembership={() => { void act(clearMembership); }} />}
+        {auth.mode === 'authenticated' ? <>
+          <Action label={t('changeMembership')} secondary disabled={busy} onPress={() => { void act(clearMembership); }} />
+          <Action label={t('logout')} secondary disabled={busy} onPress={() => { void act(async () => { await logout(); return null; }); }} />
+        </> : <Action label={t('restart')} secondary testID="retry-startup" disabled={busy} onPress={() => { void boot(); }} />}
+      </Page> : <CollectorHome key={`${auth.mode}:${scopeOf(auth)}`} auth={auth} device={device} online={online} t={t} language={language} onLogout={() => { void act(async () => { await logout(); return null; }); }} onMembership={() => { void act(clearMembership); }} onRestart={() => { void boot(); }} />}
     </KeyboardAvoidingView>
   </SafeAreaView></SafeAreaProvider>;
 }

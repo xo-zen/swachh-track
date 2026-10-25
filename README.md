@@ -4,6 +4,8 @@ An evidence-first municipal waste-collection pilot: an Android-first Expo collec
 
 ## Current Evidence
 
+**No-login demo update, 2026-10-25:** both apps discover tokenless open-demo access from the API. The setup below enables it by default. Verification passed **30 test files / 582 tests / one mode-specific skip**, lint, all six package typechecks, the production web build and Expo compatibility. Ten scripted browser checks passed, plus a separate outage/retry check. Native Android and public deployment remain unverified. See [no-login behavior and verification](docs/no-login.md). The results below are earlier, separate snapshots.
+
 **Limited free-demo update, 2026-10-25:** single-service Render configuration, guarded compact seed, five-role hosted UI and upload-signing fix are implemented. Fresh local verification passed **29 files / 436 tests / zero skips**, lint, all six package typechecks and the production web build. Both provider APIs are accessible, but **no public deployment** has been created. See [hosted-demo setup and remaining gates](docs/hosted-demo.md). The earlier standard-profile results below remain a separate snapshot.
 
 Latest verification on **2026-10-25**: Node 22 / pnpm 10.11.0 dependencies installed; Prisma schema validated; fresh local PostgreSQL **16.15** restored, all three migrations applied, and fictional seed completed with 240 properties and 7,200 historical events. `pnpm check` passed at **04:33 UTC**, including lint, all six workspace packages' typechecks and **23 files / 262 tests / 0 skips**, with **26 real PostgreSQL integration tests**. The web production build passed around **04:36 UTC**; Expo dependency compatibility passed with Expo 54.0.37, expo-crypto 15.0.9 and expo-file-system 19.0.24.
@@ -16,7 +18,7 @@ Provisioned Chromium with Node Playwright passed **10/10 browser scenarios**, re
 
 | Area                | Current code                                                                                                                         | Boundary                                                                                                     |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| Identity            | OTP, memberships, scoped roles, refresh rotation, device binding                                                                     | Fixed OTP only in development/demo; production SMS provider absent                                           |
+| Identity            | No-login fictional demo; OTP when explicitly enabled, memberships, scoped roles, refresh rotation, device binding                    | Open demo is not visitor authentication; production SMS provider absent                                      |
 | Registry            | Properties/CSV import, signed QR sheets, resident links, schedules, vendors, dated ordered routes                                    | Manual route ordering; no route optimization                                                                 |
 | Collection          | Camera/GPS/manual kg, SQLite drafts and queue, staged uploads, idempotent sync, supervisor review                                    | Native device/restart/performance acceptance outstanding                                                     |
 | Resident/operations | Pickup evidence, verified-only ratings, complaints, resolution photos, SLA history, notifications                                    | External messaging is not delivered                                                                          |
@@ -43,6 +45,8 @@ node -e "const {randomBytes}=require('node:crypto'); for (const key of ['JWT_SEC
 
 Only copy the template if `.env` does not already exist. Put the two independently generated values in `.env`; **never use the `CHANGE_ME` placeholders as secrets**, even though they satisfy the length check. Generate separate random database and MinIO credentials, for example with `node -e "console.log(require('node:crypto').randomBytes(24).toString('hex'))"`. Keep `POSTGRES_PASSWORD` and the password in `DATABASE_URL` consistent. Hex avoids URL-encoding surprises. Do not commit `.env` or expose demo services to the public internet.
 
+For no-login access, set `NO_AUTH=true`, `NODE_ENV=development` and `DEMO_MODE=true` in the root `.env` (already set in `.env.example`). Existing `.env` files need the explicit `NO_AUTH=true` addition. Plain API configuration defaults `NO_AUTH` to `false`; enabling it outside development/demo is rejected. Both standard and compact fictional seeds support it. Web and collector discover the mode from public `GET /api/v1/access`; no frontend mode flags are required. Keep both signing secrets: private files and QR signatures still use them.
+
 Choose one storage/infrastructure path below. `scripts/local-env.mjs` is an environment-specific provisioning helper, not a portable installation command.
 
 ### Host Processes With Local Storage
@@ -52,12 +56,12 @@ Provision an empty PostgreSQL database and Redis locally. Set `DATABASE_URL` to 
 ```dotenv
 NODE_ENV=development
 DEMO_MODE=true
+NO_AUTH=true
 STORAGE_DRIVER=local
 LOCAL_STORAGE_PATH=apps/api/.storage
 API_PUBLIC_URL=http://localhost:4000
 API_INTERNAL_URL=http://localhost:4000
 NEXT_PUBLIC_API_URL=/api/v1
-NEXT_PUBLIC_DEMO_MODE=true
 CORS_ORIGINS=http://localhost:3000
 ```
 
@@ -68,7 +72,6 @@ pnpm db:generate
 pnpm exec prisma validate
 pnpm db:migrate
 pnpm db:seed
-export NEXT_PUBLIC_DEMO_MODE=true
 pnpm dev
 ```
 
@@ -88,7 +91,7 @@ pnpm --filter @swachh/collector start
 
 Each of those is a long-running process. Open web at `http://localhost:3000`, API at `http://localhost:4000/api/v1`, Swagger UI at `http://localhost:4000/docs`, and generated OpenAPI JSON at `http://localhost:4000/docs/json`.
 
-Next runs from `apps/web`, so export web overrides such as `NEXT_PUBLIC_DEMO_MODE` or `API_INTERNAL_URL` in its shell, or put them in `apps/web/.env.local`; do not assume it loads the root `.env`. Its default API rewrite already targets localhost:4000. Set public variables before the web build, and restart/rebuild after rewrite changes. Compose supplies its web environment explicitly.
+The API loads the root `.env`; Next does not need to load it to discover no-login access. Next's default API rewrite already targets localhost:4000. For nondefault network overrides such as `API_INTERNAL_URL` or `NEXT_PUBLIC_API_URL`, export them in Next's shell or put them in `apps/web/.env.local`. Set public variables before the web build, and restart/rebuild after rewrite changes. Compose supplies its web environment explicitly.
 
 ```sh
 curl --fail http://localhost:4000/api/v1/healthz
@@ -128,13 +131,17 @@ pnpm --filter @swachh/collector android
 
 Use a compatible SDK 54 Expo Go for development, or the installed native app `in.swachhtrack.collector` for Maestro. Neither path has been physically validated here.
 
+In open-demo mode the collector opens directly as the seeded collector, without OTP or refresh tokens. Online device registration and route loading are still required before first offline capture; the existing scoped queue and evidence checks remain in place.
+
 Seed coordinates are fictional Pune-area points near `18.5204, 73.8567`. A phone elsewhere should fail the 75 m geofence. Before a physical demo, create/update **test** property coordinates to the actual test site, create today's route from valid schedules/vendor/collector, and refetch the route on the phone. Do not spoof GPS or weaken the geofence to make a demo pass. See the [ten-minute demo](docs/demo-script.md).
 
 ## Fictional Demo Accounts
 
-Request an OTP, then enter `123456`. This is accepted only with **both** `NODE_ENV=development` and `DEMO_MODE=true`; no SMS is sent. Aliases are accepted in the API's `phone` field only under that gate. The phone values are synthetic identifiers, not numbers to contact.
+With `NO_AUTH=true`, web opens the resident workspace directly. Use the **Demo role** dropdown to switch among the five seeded roles below. Only the selected role alias is saved in `sessionStorage`; reload needs no login, API calls use tokenless `X-Demo-Role`, and logout is hidden. Anyone can select these roles, including the two admin roles: this is shared mutable fictional data, not visitor identity or a safe real-data/production mode. Profile edits, resident invitations and activation/deactivation are locked; `SUPER_ADMIN` and cross-tenant access are not available.
 
-| Role          | Phone           | Alias                            |
+For the retained authenticated flow, explicitly set `NO_AUTH=false` and restart the API. Request an OTP, then enter `123456`; this fixed code and the email aliases below require **both** `NODE_ENV=development` and `DEMO_MODE=true`. No SMS is sent. Email aliases are accepted in the API's `phone` field only under that gate. The phone values are synthetic identifiers, not numbers to contact.
+
+| Role          | Phone           | OTP alias (`NO_AUTH=false`)       |
 | ------------- | --------------- | -------------------------------- |
 | Resident      | `+919000000001` | `resident@demo.swachhtrack.in`   |
 | Society admin | `+919000000002` | `society@demo.swachhtrack.in`    |
@@ -161,6 +168,8 @@ pnpm --filter @swachh/collector check:expo
 `pnpm check` migrates and seeds before lint/typecheck/test; it is not read-only. The authored [CI workflow](.github/workflows/ci.yml) runs these core gates against synthetic PostgreSQL fixtures. It does not claim browser, Android, MinIO or worker acceptance.
 
 Browser source is [tests/web.e2e.mjs](tests/web.e2e.mjs); `pnpm e2e` invokes [scripts/e2e.mjs](scripts/e2e.mjs). The runner accepts `E2E_CDP_URL`, `E2E_REUSE_PAGE` and `E2E_BASE_URL`; see [tests/README.md](tests/README.md) for their exact behavior. Hosted cloud browser interactions must use `browser_execute` with the provisioned browser and `.bcode/agent-workspace/hosted-e2e.mjs` private bridge, never a local browser launch. Local Playwright installation/launch is supported only for ordinary external development machines.
+
+The existing `tests/web.e2e.mjs` and `tests/hosted-demo.e2e.mjs` exercise login and require the API to run with `NO_AUTH=false`. Separate no-login browser coverage is planned in `tests/no-auth.e2e.mjs`; no executed result is claimed here.
 
 - [Architecture](docs/architecture.md): components, trust boundaries, data flow and limitations.
 - [API](docs/api.md): actual routes, authentication, upload and sync contracts.

@@ -3,16 +3,18 @@ import { Panel } from '@swachh/ui';
 import { record, rows, safeUrl, text } from '@/lib/data';
 import { HOSTED_DEMO_ENABLED } from '@/lib/demo';
 import { useI18n } from '@/lib/i18n';
-import { useScope } from './providers';
+import { useAuth, useScope } from './providers';
 import { ActionForm, DataTable, Notice, QueryRecord, SectionHeading, field } from './operations';
 
 export function Settings() {
   const { t } = useI18n(); const { role, society, ulb, membership } = useScope();
+  const { access } = useAuth();
+  const identityLocked = HOSTED_DEMO_ENABLED || access?.mode === 'open-demo';
   return <div className="section-stack"><SectionHeading title={t('settings')} />
     <QueryRecord path="/me">{data => <>
-      <div className="settings-grid"><Panel className="padded"><h3>{t('contact')}</h3>{HOSTED_DEMO_ENABLED ? <Notice>{t('hostedDemoIdentityLocked')}</Notice> : <><p className="muted">{t('consent')}</p><ActionForm title="edit" path="/me" method="PATCH" initial={record(data.user)} fields={[
+      <div className="settings-grid"><Panel className="padded"><h3>{t('contact')}</h3>{identityLocked ? <Notice>{t('hostedDemoIdentityLocked')}</Notice> : <><p className="muted">{t('consent')}</p><ActionForm title="edit" path="/me" method="PATCH" initial={record(data.user)} fields={[
         field('name', 'name'), field('email', 'email', { type: 'email', required: false }), field('locale', 'locale', { type: 'select', options: [{ value: 'en', label: 'English' }, { value: 'hi', label: 'हिन्दी' }] }),
-      ]} /></>}</Panel><Panel className="padded"><h3>{t('preferences')}</h3>{HOSTED_DEMO_ENABLED ? <Notice>{t('hostedDemoAutomation')}</Notice> : <><p className="muted">{t('quietHours')}</p><ActionForm title="preferences" path="/me" method="PATCH" initial={record(record(data.user).notificationPreferences)} fields={[
+      ]} /></>}</Panel><Panel className="padded"><h3>{t('preferences')}</h3>{identityLocked ? <Notice>{t('hostedDemoIdentityLocked')}</Notice> : <><p className="muted">{t('quietHours')}</p><ActionForm title="preferences" path="/me" method="PATCH" initial={record(record(data.user).notificationPreferences)} fields={[
         field('inApp', 'inApp', { type: 'checkbox', required: false }), field('email', 'emailOptIn', { type: 'checkbox', required: false }), field('whatsapp', 'whatsapp', { type: 'checkbox', required: false }),
       ]} transform={values => ({ notificationPreferences: values })} /></>}</Panel></div>
       {role === 'SUPER_ADMIN' && <Panel className="padded"><h3>{t('featureFlags')}</h3><ActionForm title="featureFlags" path={`${ulb}/feature-flags`} method="PATCH" initial={record(record(rows(data.memberships).find(item => item.id === membership?.id)?.ulb).flags)} fields={[
@@ -33,6 +35,7 @@ export function Notifications() {
 
 export function CollectorGuide() {
   const { t } = useI18n(); const value = process.env.NEXT_PUBLIC_COLLECTOR_APP_URL;
+  const noAuth = useAuth().access?.mode === 'open-demo';
   const url = value?.startsWith('exp://') || value?.startsWith('swachhtrack://') ? value : safeUrl(value);
-  return <Panel className="collector-guide padded"><span className="eyebrow">ANDROID / EXPO</span><h2>{t('mobileTitle')}</h2><p>{t('mobileDescription')}</p><Notice>{t('reviewNotice')}</Notice><p>{t('mobileSteps')}</p>{url ? <a className="button button-primary" href={url}>{t('mobileOpen')}</a> : <Notice>{t('mobileUnconfigured')}</Notice>}</Panel>;
+  return <Panel className="collector-guide padded"><span className="eyebrow">ANDROID / EXPO</span><h2>{t('mobileTitle')}</h2><p>{t('mobileDescription')}</p><Notice>{t('reviewNotice')}</Notice><p>{t(noAuth ? 'mobileStepsOpen' : 'mobileSteps')}</p>{url ? <a className="button button-primary" href={url}>{t('mobileOpen')}</a> : <Notice>{t('mobileUnconfigured')}</Notice>}</Panel>;
 }

@@ -1,6 +1,10 @@
 # Acceptance tests
 
-## Latest recorded results
+## No-login results
+
+2026-10-25: **30 test files / 582 tests passed / one mode-specific skip**, using disposable local PostgreSQL 15.19. Lint, all six package typechecks, production web build and Expo compatibility passed. `tests/no-auth.e2e.mjs` passed ten scripted checks in the provisioned browser; a separate startup outage/retry check passed without revealing login. See [no-login verification](../docs/no-login.md) for boundaries. Physical Android and public deployment were not tested.
+
+## Earlier recorded results
 
 On **2026-10-25**, `pnpm check` passed at **04:33 UTC**: lint, all six package typechecks and **23 files / 262 tests / 0 skips**, including **26 real PostgreSQL integration tests**. Fresh local PostgreSQL **16.15** was restored, all three migrations applied, and fictional fixtures seeded with 240 properties / 7,200 historical events. The web production build passed around **04:36 UTC**; Expo compatibility passed. This documentation update did not rerun those commands.
 
@@ -8,7 +12,7 @@ Unit and PostgreSQL integration tests live beside their modules and run with `pn
 
 ## Browser suite and runner
 
-The suite is **`tests/web.e2e.mjs`**, not `.ts`. `pnpm e2e` invokes `node scripts/e2e.mjs`. It needs a running seeded API/web, reachable signed storage URLs and a real Chromium browser. Runner configuration in [scripts/e2e.mjs](../scripts/e2e.mjs):
+The suite is **`tests/web.e2e.mjs`**, not `.ts`. `pnpm e2e` invokes `node scripts/e2e.mjs`. It needs a running seeded API/web with server `NO_AUTH=false`, reachable signed storage URLs and a real Chromium browser. Runner configuration in [scripts/e2e.mjs](../scripts/e2e.mjs):
 
 | Variable | Actual behavior |
 | --- | --- |
@@ -26,6 +30,12 @@ pnpm e2e
 That installation/local-launch path is **not for hosted cloud workers**. In cloud runs, use **`browser_execute` for all browser interactions**, the already provisioned Chromium, and `.bcode/agent-workspace/hosted-e2e.mjs`. Its `setup()` connects Node Playwright to `BU_CDP_WS`, reuses the existing page and privately bridges `swachh-track.test` to worker-local Next on port 3000 and `localhost:4000` to the API. Invoke the helper and `runWebAcceptance(page, 'https://swachh-track.test')` from `browser_execute`; do not launch/install a local cloud browser or treat the private origin as a deployment.
 
 The final run used **production-built Next with a development/demo API**, not production authentication/providers, and a fresh separate disposable database, **`swachh_browser_acceptance`**, to avoid OTP-limit exhaustion from repeated development tests. This did not reset user data or disable security limits. Worker-local processes and the private bridge do not survive task completion; there is **no public deployment**.
+
+## Access modes
+
+The default demo setup now uses `NO_AUTH=true` with `NODE_ENV=development` and `DEMO_MODE=true`. Clients discover the mode from `/api/v1/access`; no frontend mode flags are needed. Existing login suites **`tests/web.e2e.mjs` and `tests/hosted-demo.e2e.mjs` require the API to run with `NO_AUTH=false`**, retaining development/demo mode for fixed OTP. Set that server environment and restart before running either suite; setting it only on the test runner does not change a running API.
+
+`tests/no-auth.e2e.mjs` exports `runNoAuthChecks(session, appOrigin)` for an attached CDP session. Invoke it from `browser_execute` with the provisioned browser and a reachable, disposable, seeded open-demo app. It does not launch a browser or provision services. It checks direct entry, all five roles, reload, locked identity controls, phone-width navigation and Hindi. See [no-login verification](../docs/no-login.md) for this change's results and limits. Historical results below and in [hosted-demo checks](../docs/hosted-demo.md#executed-checks) remain authenticated-mode evidence, not native Android or production acceptance.
 
 ## Browser evidence and limits
 

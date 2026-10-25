@@ -95,7 +95,7 @@ export async function registryRoutes(app: App) {
     return page(await app.db.resident.findMany({ where: { ulbId: scope.ulbId, property: { societyId: request.params.societyId } }, include: { user: { select: { name: true, phone: true, email: true } }, property: { select: { unitNo: true, block: true } } }, ...pageArgs(request.query) }), request.query.limit);
   });
   router.post('/societies/:societyId/residents/invite', { preHandler: admin, schema: { params: societyParams, body: residentInviteSchema } }, async (request, reply) => {
-    if (app.config.HOSTED_DEMO === 'true') return fail(403, 'HOSTED_DEMO_IDENTITY_LOCKED', 'Resident invitations are disabled in the hosted demo.');
+    if (app.config.HOSTED_DEMO === 'true' || app.config.NO_AUTH === 'true') return fail(403, 'HOSTED_DEMO_IDENTITY_LOCKED', 'Resident invitations are disabled in this demo.');
     const scope = new Scope(request); await scope.society(request.params.societyId); const property = await scope.property(request.body.propertyId);
     if (property.societyId !== request.params.societyId) return fail(404, 'NOT_FOUND', 'Property not found.');
     const result = await app.db.$transaction(async tx => {
@@ -112,7 +112,7 @@ export async function registryRoutes(app: App) {
     return reply.code(201).send(result);
   });
   router.patch('/societies/:societyId/residents/:id', { preHandler: admin, schema: { params: societyIdParams, body: z.object({ active: z.boolean() }).strict() } }, async request => {
-    if (app.config.HOSTED_DEMO === 'true') return fail(403, 'HOSTED_DEMO_IDENTITY_LOCKED', 'Resident identity changes are disabled in the hosted demo.');
+    if (app.config.HOSTED_DEMO === 'true' || app.config.NO_AUTH === 'true') return fail(403, 'HOSTED_DEMO_IDENTITY_LOCKED', 'Resident identity changes are disabled in this demo.');
     const scope = new Scope(request); await scope.society(request.params.societyId);
     const resident = await app.db.resident.findFirst({ where: { ulbId: scope.ulbId, id: request.params.id, property: { societyId: request.params.societyId } } });
     if (!resident) return fail(404, 'NOT_FOUND', 'Resident not found.');

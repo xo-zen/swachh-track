@@ -6,12 +6,14 @@ This is a development/pilot implementation, not a completed security assessment.
 
 Untrusted inputs include web/mobile requests, GPS/time/weight declarations, uploaded files, QR possession, webhook bodies and user-authored spreadsheet content. The API, signing keys, database administration, object-store administration and supervisor/ULB decisions are trusted boundaries. A malicious administrator or rooted collector device is not neutralized by this build.
 
+**Open demo is not authentication and is unsafe for real data or production.** With `NO_AUTH=true`, anyone can select any of five seeded roles, including society and ULB admin, and change shared fictional business data. Audit actions identify a shared seeded actor, not an individual visitor. Exact seeded membership checks exclude `SUPER_ADMIN` and other tenants; they do not protect one demo visitor from another. Profile edits, resident invitations and activation/deactivation are locked.
+
 ## Implemented Controls
 
 | Area               | Current control                                                                                                          | Residual boundary                                                        |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| Authentication     | HMAC-hashed OTP/refresh values, bounded OTP attempts, short access JWT, refresh rotation and reuse-family revocation     | Production OTP provider absent; no immediate per-token access revocation |
-| Authorization      | Active user/membership lookup, role gates, ULB/society/resident/contractor predicates                                    | Application scoping, not database RLS; new queries need the same guards  |
+| Authentication     | With `NO_AUTH=false`: HMAC-hashed OTP/refresh, bounded attempts, short JWT, refresh rotation/reuse revocation             | Open demo has no visitor authentication; production OTP provider absent |
+| Authorization      | Exact seeded identity/membership checks in open demo; active membership, role and tenant/scope gates in both modes      | Application scoping, not database RLS; demo roles are publicly selectable |
 | Database integrity | Deferred tenant-reference checks, positive money/kg checks, verified-stop uniqueness, append-only audit/history triggers | DBA can bypass/change controls; no external tamper-evident audit archive |
 | Uploads            | Owned reservations, private five-minute capabilities, real-byte decoding, size/pixel limits, normalized image hashing    | PDF malware scanning absent; signed URLs grant temporary bearer access   |
 | Collection         | Assigned route/date, registered device, signed QR/hash, geofence, duplicate-image rules and review                       | No camera/GPS/scale hardware attestation                                 |
@@ -24,16 +26,20 @@ Primary sources: `apps/api/src/{app,auth,core,storage,pickups}.ts`, Prisma migra
 ## Secrets And Demo Isolation
 
 - `.env.example` contains placeholders, not safe defaults. Generate independent cryptographically random `JWT_SECRET` and `QR_SECRET`, at least 32 characters each. Current config checks length, not placeholder quality. Generate separate database/object-store credentials and never commit them.
-- Fixed OTP `123456` and demo email aliases require both `NODE_ENV=development` and `DEMO_MODE=true`. Production rejects demo mode; non-demo OTP returns 503 until a provider is actually implemented/configured.
-- The five demo accounts are public synthetic identities, not protected pilot accounts. Do not expose a demo-enabled API with real data. `NEXT_PUBLIC_DEMO_MODE` only controls development web buttons; it is not the API's authorization switch.
+- `.env.example` and `render.yaml` set `NO_AUTH=true`; the hosted launcher defaults to true unless explicitly false. Plain API configuration defaults to false. Open demo requires both `NODE_ENV=development` and `DEMO_MODE=true`, for either fictional seed profile; other environments are rejected.
+- Fixed OTP `123456` and demo email aliases are used only with `NO_AUTH=false` and require both `NODE_ENV=development` and `DEMO_MODE=true`. Production rejects demo mode; non-demo OTP returns 503 until a provider is actually implemented/configured.
+- Clients discover access via public `GET /api/v1/access`; no frontend mode flag is required. `X-Demo-Role` must exactly match `resident`, `society`, `collector`, `supervisor` or `ulb` and is ignored as authentication when `NO_AUTH=false`. Frontend presentation flags are not authorization switches.
+- No-login access retains private signed files and QR signatures. Both signing secrets remain required; never make the bucket public or remove signature checks to simplify the demo.
 - Changing JWT secret invalidates existing JWTs, hashed refresh/OTP values and local signed storage capabilities. Plan coordinated reauthentication. Changing QR key/version invalidates existing property tokens until hashes/sheets are regenerated and route caches refreshed; unchanged key/version is not a real QR rotation.
 - Compose forces development mode, uses a development Next server and MinIO root credentials from `.env`. It is not a production-hardening recipe. Never reuse CI's explicitly test-only database password or keys in a deployment.
 
 ## Session And Device Limits
 
-Access JWTs expire after 15 minutes. Refresh tokens expire after 30 days, rotate on use, and revoke their family on detected reuse. Logout revokes that refresh family only: an existing access token can remain usable for **up to 15 minutes**, unless its user/membership is made inactive. The API rereads those active records per authenticated request.
+In open demo, API calls carry tokenless `X-Demo-Role`; clients do not request OTPs or refresh tokens and hide logout. Credential endpoints return 403 `AUTH_DISABLED`. Web saves only the selected role alias in `sessionStorage`, not credentials; reload reopens the workspace without login. The collector opens its seeded role while retaining device registration and the scoped offline queue.
 
-Web tokens stay in memory, not localStorage/cookies; full reload requires login. This reduces persistent token exposure but does not prevent malicious page JavaScript from acting as the current user. There is no implemented HttpOnly session proxy. Expo stores tokens and the stable device ID in SecureStore. Sign-out preserves the device ID, route cache, queues and images; re-login to the same scope restores access.
+With `NO_AUTH=false`, access JWTs expire after 15 minutes. Refresh tokens expire after 30 days, rotate on use, and revoke their family on detected reuse. Logout revokes that refresh family only: an existing access token can remain usable for **up to 15 minutes**, unless its user/membership is made inactive. The API rereads those active records per authenticated request.
+
+In authenticated mode, web tokens stay in memory, not localStorage/cookies; full reload requires login. This reduces persistent token exposure but does not prevent malicious page JavaScript from acting as the current user. There is no implemented HttpOnly session proxy. Expo stores tokens and the stable device ID in SecureStore. Sign-out preserves the device ID, route cache, queues and images; re-login to the same scope restores access.
 
 At most two active devices may bind to one collector. A seeded demo device already occupies one slot. Supervisor/ULB revocation is checked by subsequent collection validation, but does not remotely erase the phone or provide hardware identity attestation. Repeated reinstall/rehearsal may require revoking a stale demo binding rather than bypassing the device limit.
 
@@ -51,7 +57,7 @@ Assigned cached routes include signed QR tokens. Numeric fallback submits the se
 
 Defaults are a 75 m hard geofence and >50 m GPS-accuracy review threshold. Offline capture always requires review; capture/receipt delay cannot distinguish network delay from clock error. Otherwise-clean captures have a 5% random-review branch. Reused normalized hashes at the same property within the prior 24 server-receive hours, or duplicate images within an event, are rejected. Cropped/altered images may evade exact-hash detection; no perceptual duplicate detector or AI contamination classifier is implemented.
 
-Supervisors must supply reasons; hard failures cannot be approved into verified evidence. Accepted exceptions are not verified collections. Reviews are accountable human decisions, not proof that all submitted declarations were independently measured.
+Supervisors must supply reasons; hard failures cannot be approved into verified evidence. Accepted exceptions are not verified collections. Reviews record an actor and reason, not proof that all submitted declarations were independently measured; in open demo, that actor is shared and does not identify the visitor.
 
 ## File And Data Handling
 
@@ -73,7 +79,7 @@ Map tiles come from OpenStreetMap over the network; review tile usage terms and 
 
 ## Before A Real Pilot
 
-1. Separate synthetic demo/test data and credentials from pilot infrastructure; implement and test non-demo OTP before disabling demo access.
+1. Separate synthetic demo/test data and credentials from pilot infrastructure. Require `NO_AUTH=false` and `DEMO_MODE=false` for real data, and implement/test non-demo OTP before allowing pilot access; disabling open demo alone does not supply an SMS provider.
 2. Add HTTPS, least-privilege database/storage accounts, private bucket policies, validated CORS and explicit proxy/shared-rate-limit configuration.
 3. Complete S3 upload/confirmation/download tests, scanner/quarantine handling, log redaction and a dependency/security review.
 4. Test native Android camera/GPS, permissions, force-stop/reboot, token rotation, device revocation, storage exhaustion and membership isolation on real hardware.

@@ -13,7 +13,7 @@ import type { PickupInput } from '@swachh/contracts';
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
 const secret = 'integration-test-only-secret-value-0123456789';
-const config = { DATABASE_URL: databaseUrl ?? 'postgresql://unused', JWT_SECRET: secret, QR_SECRET: secret, QR_SECRET_VERSION: 'integration-1', NODE_ENV: 'development' as const, DEMO_MODE: 'true' as const, STORAGE_DRIVER: 'local' as const, LOCAL_STORAGE_PATH: `/tmp/bcode/swachh-api-test-${randomUUID()}`, API_PUBLIC_URL: 'http://localhost:4000', SWACHHATA_WEBHOOK_SECRET: secret };
+const config = { DATABASE_URL: databaseUrl ?? 'postgresql://unused', JWT_SECRET: secret, QR_SECRET: secret, QR_SECRET_VERSION: 'integration-1', NODE_ENV: 'development' as const, DEMO_MODE: 'true' as const, HOSTED_DEMO: 'false' as const, NO_AUTH: 'false' as const, STORAGE_DRIVER: 'local' as const, LOCAL_STORAGE_PATH: `/tmp/bcode/swachh-api-test-${randomUUID()}`, API_PUBLIC_URL: 'http://localhost:4000', SWACHHATA_WEBHOOK_SECRET: secret };
 
 suite('PostgreSQL API integration (isolated fictional tenant fixtures)', () => {
   let app: FastifyInstance; let db: PrismaClient;

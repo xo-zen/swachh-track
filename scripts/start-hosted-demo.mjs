@@ -9,6 +9,8 @@ export function hostedEnvironments(env) {
   if (env.HOSTED_DEMO !== 'true' || env.DEMO_MODE !== 'true') {
     throw new Error('Hosted startup requires explicit HOSTED_DEMO=true and DEMO_MODE=true. Use dedicated fictional-demo resources only.');
   }
+  const noAuth = env.NO_AUTH ?? 'true';
+  if (!['true', 'false'].includes(noAuth)) throw new Error('NO_AUTH must be true or false.');
   const required = key => {
     const value = env[key];
     if (!value?.trim() || /CHANGE_ME|REPLACE_ME/i.test(value)) throw new Error(`${key} must be explicitly configured for the dedicated fictional demo.`);
@@ -41,11 +43,11 @@ export function hostedEnvironments(env) {
     throw new Error('PORT must be 1-65535 and must not use the internal API port 4000.');
   }
   const api = {
-    ...env, NODE_ENV: 'development', HOSTED_DEMO: 'true', DEMO_MODE: 'true',
+    ...env, NODE_ENV: 'development', HOSTED_DEMO: 'true', DEMO_MODE: 'true', NO_AUTH: noAuth,
     HOST: '127.0.0.1', PORT: '4000', API_PUBLIC_URL: origin.origin, CORS_ORIGINS: origin.origin,
   };
   const web = {
-    ...env, NODE_ENV: 'production', HOSTED_DEMO: 'false', DEMO_MODE: 'false',
+    ...env, NODE_ENV: 'production', HOSTED_DEMO: 'false', DEMO_MODE: 'false', NO_AUTH: 'false',
     HOST: '0.0.0.0', PORT: port, API_INTERNAL_URL: 'http://127.0.0.1:4000',
     NEXT_PUBLIC_API_URL: '/api/v1', NEXT_PUBLIC_HOSTED_DEMO: 'true', NEXT_PUBLIC_DEMO_MODE: 'false',
     NEXT_TELEMETRY_DISABLED: '1',

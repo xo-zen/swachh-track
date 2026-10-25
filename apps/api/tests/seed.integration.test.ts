@@ -23,7 +23,7 @@ describe('seed environment guards', () => {
     { NODE_ENV: 'development', DEMO_MODE: 'false' },
     { NODE_ENV: 'production', DEMO_MODE: 'false' },
   ])('refuses hosted seeding with %j before database access', async flags => {
-    for (const [key, value] of Object.entries({ DATABASE_URL: 'postgresql://localhost/unused', JWT_SECRET: secret, QR_SECRET: secret, HOSTED_DEMO: 'true', STORAGE_DRIVER: 'local', ...flags })) vi.stubEnv(key, value);
+    for (const [key, value] of Object.entries({ DATABASE_URL: 'postgresql://localhost/unused', JWT_SECRET: secret, QR_SECRET: secret, HOSTED_DEMO: 'true', NO_AUTH: 'false', STORAGE_DRIVER: 'local', ...flags })) vi.stubEnv(key, value);
     const db = new PrismaClient();
     const read = vi.spyOn(db.ulb, 'findUnique');
     try {
@@ -54,7 +54,7 @@ describe.skipIf(!adminUrl)('seed profiles in fresh disposable PostgreSQL databas
     url.pathname = `/${name}`;
     url.searchParams.set('schema', 'public');
     storagePath = await mkdtemp('/tmp/bcode/swachh-seed-test-');
-    for (const [key, value] of Object.entries({ DATABASE_URL: url.toString(), NODE_ENV: 'development', DEMO_MODE: 'true', HOSTED_DEMO: 'true', JWT_SECRET: secret, QR_SECRET: secret, STORAGE_DRIVER: 'local', LOCAL_STORAGE_PATH: storagePath })) vi.stubEnv(key, value);
+    for (const [key, value] of Object.entries({ DATABASE_URL: url.toString(), NODE_ENV: 'development', DEMO_MODE: 'true', HOSTED_DEMO: 'true', NO_AUTH: 'false', JWT_SECRET: secret, QR_SECRET: secret, STORAGE_DRIVER: 'local', LOCAL_STORAGE_PATH: storagePath })) vi.stubEnv(key, value);
     execFileSync(process.execPath, [fileURLToPath(new URL('../../../node_modules/prisma/build/index.js', import.meta.url)), 'migrate', 'deploy'], { cwd: projectRoot, env: process.env, stdio: 'pipe' });
     db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
     expect(await db.ulb.count()).toBe(0);

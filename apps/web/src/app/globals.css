@@ -56,6 +56,8 @@ textarea { resize: vertical; }
 .empty-state p { max-width: 360px; font-size: 13px; }
 .empty-mark { width: 42px; height: 42px; border: 1px dashed #b4c4b6; border-radius: 9px; font-size: 24px; color: #719079; }
 .loading-state { display: flex; gap: 12px; justify-content: center; align-items: center; padding: 48px 20px; color: var(--muted); }
+.startup-page { min-height: 100dvh; max-width: 640px; margin: auto; padding: 32px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; text-align: center; }
+.startup-page > svg { color: var(--green); }
 .spinner { height: 18px; width: 18px; border: 2px solid #d4e2d4; border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .login-page { min-height: 100dvh; display: grid; grid-template-columns: 1fr 1fr; }

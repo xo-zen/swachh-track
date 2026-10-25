@@ -20,6 +20,15 @@ export class UnconfiguredOtpProvider implements OtpProvider {
 
 export async function authRoutes(app: App) {
   const router = api(app);
+  router.get('/access', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return app.config.NO_AUTH === 'true'
+      ? { mode: 'open-demo', roles: DEMO_USERS.map(({ alias, role }) => ({ alias, role })) }
+      : { mode: 'authenticated', roles: [] };
+  });
+  async function requireAuthenticationEnabled() {
+    if (app.config.NO_AUTH === 'true') return fail(403, 'AUTH_DISABLED', 'Credential authentication is disabled in open demo mode. Select a role using X-Demo-Role.');
+  }
   const otpProvider: OtpProvider = app.config.NODE_ENV === 'development' && app.config.DEMO_MODE === 'true' ? new DemoOtpProvider() : new UnconfiguredOtpProvider();
   async function resolvePhone(value: string) {
     if (app.config.HOSTED_DEMO === 'true') {
@@ -42,7 +51,7 @@ export async function authRoutes(app: App) {
     return { accessToken: app.jwt.sign({ sub: userId, type: 'access' }, { expiresIn: '15m' }), refreshToken, user: publicUser(user), memberships };
   }
 
-  router.post('/auth/otp/request', { schema: { body: identity }, config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  router.post('/auth/otp/request', { onRequest: requireAuthenticationEnabled, schema: { body: identity }, config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const resolved = await resolvePhone(request.body.phone);
     const demo = app.config.NODE_ENV === 'development' && app.config.DEMO_MODE === 'true';
     let code = demo ? '123456' : String(randomInt(100000, 1000000));
@@ -60,7 +69,7 @@ export async function authRoutes(app: App) {
     return reply.code(202).send({ status: demo ? 'DEMO_CODE_AVAILABLE' : 'OTP_SENT', expiresIn: 300, retryAfter: 60, ...(demo ? { demoCode: '123456' } : {}) });
   });
 
-  router.post('/auth/otp/verify', { schema: { body: identity.extend({ code: z.string().regex(/^\d{6}$/) }) }, config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async request => {
+  router.post('/auth/otp/verify', { onRequest: requireAuthenticationEnabled, schema: { body: identity.extend({ code: z.string().regex(/^\d{6}$/) }) }, config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async request => {
     if (request.body.code === '123456' && (app.config.NODE_ENV !== 'development' || app.config.DEMO_MODE !== 'true')) return fail(401, 'DEMO_OTP_DISABLED', 'Fixed OTP verification is disabled.');
     const resolved = await resolvePhone(request.body.phone);
     const result = await serialized(app.db, `otp:${resolved}`, async tx => {
@@ -76,7 +85,7 @@ export async function authRoutes(app: App) {
     return result ?? fail(401, 'OTP_INVALID', 'The code is invalid, expired, used, or its attempt limit was reached.');
   });
 
-  router.post('/auth/refresh', { schema: { body: refreshBody } }, async request => {
+  router.post('/auth/refresh', { onRequest: requireAuthenticationEnabled, schema: { body: refreshBody } }, async request => {
     const tokenHash = hmac(request.body.refreshToken, app.config.JWT_SECRET);
     const initial = await app.db.refreshToken.findUnique({ where: { tokenHash } });
     if (!initial) return fail(401, 'REFRESH_INVALID', 'Refresh token is invalid.');
@@ -94,19 +103,19 @@ export async function authRoutes(app: App) {
     });
     return result ?? fail(401, 'REFRESH_REUSED_OR_EXPIRED', 'Session expired or token reused. Sign in again.');
   });
-  router.post('/auth/logout', { schema: { body: refreshBody } }, async request => {
+  router.post('/auth/logout', { onRequest: requireAuthenticationEnabled, schema: { body: refreshBody } }, async request => {
     const token = await app.db.refreshToken.findUnique({ where: { tokenHash: hmac(request.body.refreshToken, app.config.JWT_SECRET) } });
     if (token) await app.db.refreshToken.updateMany({ where: { familyId: token.familyId }, data: { revokedAt: new Date() } });
     return { status: 'LOGGED_OUT' };
   });
   router.get('/me', { preHandler: authenticate }, async request => {
     const scope = new Scope(request);
-    const memberships = await app.db.membership.findMany({ where: { userId: scope.userId, status: 'ACTIVE', ...(app.config.HOSTED_DEMO === 'true' ? { id: scope.membership.id, ulbId: scope.ulbId } : {}) }, include: { ulb: { select: { name: true, flags: true } } } });
+    const memberships = await app.db.membership.findMany({ where: { userId: scope.userId, status: 'ACTIVE', ...(app.config.HOSTED_DEMO === 'true' || app.config.NO_AUTH === 'true' ? { id: scope.membership.id, ulbId: scope.ulbId } : {}) }, include: { ulb: { select: { name: true, flags: true } } } });
     const enriched = await Promise.all(memberships.map(async membership => ({ ...membership, society: membership.societyId ? await app.db.society.findFirst({ where: { id: membership.societyId, ulbId: membership.ulbId, deletedAt: null }, select: { name: true } }) : null })));
     return { user: publicUser(scope.actor.user), memberships: enriched, activeMembership: scope.membership };
   });
   router.patch('/me', { preHandler: authenticate, schema: { body: z.object({ name: z.string().min(1).max(100).optional(), email: z.string().email().optional(), locale: z.enum(['en', 'hi']).optional(), notificationPreferences: z.object({ inApp: z.boolean(), email: z.boolean(), whatsapp: z.boolean() }).strict().optional() }).strict() } }, async request => {
-    if (app.config.HOSTED_DEMO === 'true') return fail(403, 'HOSTED_DEMO_IDENTITY_LOCKED', 'Personal identity changes are disabled in the hosted demo.');
+    if (app.config.HOSTED_DEMO === 'true' || app.config.NO_AUTH === 'true') return fail(403, 'HOSTED_DEMO_IDENTITY_LOCKED', 'Personal identity changes are disabled in this demo.');
     const scope = new Scope(request);
     return { user: publicUser(await app.db.user.update({ where: { id: scope.userId }, data: request.body })) };
   });

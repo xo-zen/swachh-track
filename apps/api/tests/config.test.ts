@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
 const base = { DATABASE_URL: 'postgresql://localhost/test', JWT_SECRET: 'test-only-secret-with-more-than-32-bytes', QR_SECRET: 'test-only-qr-secret-with-more-than-32-bytes' };
 describe('deployment security configuration', () => {
+  beforeEach(() => {
+    for (const [key, value] of Object.entries({ NODE_ENV: 'development', DEMO_MODE: 'false', HOSTED_DEMO: 'false', NO_AUTH: 'false', STORAGE_DRIVER: 's3' })) vi.stubEnv(key, value);
+  });
   afterEach(() => vi.unstubAllEnvs());
   it('rejects demo mode and local evidence storage in production', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'production', DEMO_MODE: 'true' })).toThrow('DEMO_MODE');
@@ -27,6 +30,24 @@ describe('deployment security configuration', () => {
   });
   it('does not infer DEMO_MODE from HOSTED_DEMO', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'development', DEMO_MODE: undefined, HOSTED_DEMO: 'true' })).toThrow('HOSTED_DEMO');
+  });
+  it('defaults NO_AUTH off and permits either seed profile only in explicit development demo mode', () => {
+    expect(loadConfig({ ...base, NO_AUTH: undefined }).NO_AUTH).toBe('false');
+    for (const HOSTED_DEMO of ['false', 'true'] as const) {
+      expect(loadConfig({ ...base, NODE_ENV: 'development', DEMO_MODE: 'true', HOSTED_DEMO, NO_AUTH: 'true' }).NO_AUTH).toBe('true');
+    }
+  });
+  it.each([
+    ['development', 'false'], ['test', 'false'], ['test', 'true'], ['production', 'false'], ['production', 'true'],
+  ] as const)('fails closed for NO_AUTH with NODE_ENV=%s and DEMO_MODE=%s', (NODE_ENV, DEMO_MODE) => {
+    expect(() => loadConfig({ ...base, NODE_ENV, DEMO_MODE, NO_AUTH: 'true' })).toThrow(/NO_AUTH|DEMO_MODE/);
+  });
+  it.each(['', 'TRUE', '1', 'yes'])('rejects non-enum NO_AUTH=%j', value => {
+    vi.stubEnv('NO_AUTH', value);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'development', DEMO_MODE: 'true' })).toThrow('NO_AUTH');
+  });
+  it('does not infer DEMO_MODE from NO_AUTH', () => {
+    expect(() => loadConfig({ ...base, NODE_ENV: 'development', DEMO_MODE: undefined, NO_AUTH: 'true' })).toThrow('NO_AUTH');
   });
   it('keeps the default bind address and port, and accepts loopback binding', () => {
     const defaults = loadConfig({ ...base, HOST: undefined, PORT: undefined });

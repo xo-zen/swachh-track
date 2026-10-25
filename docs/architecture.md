@@ -21,7 +21,7 @@ PostgreSQL notification outbox --> BullMQ/Redis 7 worker
 | Source                                                         | Responsibility                                                                                       |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `apps/api/src/app.ts`, `server.ts`, `config.ts`                | Fastify setup, strict request schemas, error handling, configuration, health, generated OpenAPI      |
-| `apps/api/src/core.ts`, `auth.ts`                              | Authentication, current membership, scoped predicates, roles, audit, transaction locks, OTP/refresh  |
+| `apps/api/src/core.ts`, `auth.ts`                              | Access-mode discovery, demo identity/authentication, scoped membership/roles, audit, locks, OTP/refresh |
 | `registry.ts`, `pickups.ts`, `storage.ts`                      | Registry, routes, evidence normalization, durable submissions and reviews                            |
 | `operations.ts`, `billing.ts`, `compliance.ts`, `reporting.ts` | Resident workflows, complaints, invoicing, evidence registers, reporting                             |
 | `analytics.ts`                                                 | Maps scoped database records into shared domain inputs                                               |
@@ -39,7 +39,11 @@ Some route DTOs are defined directly in API modules rather than using similarly 
 
 `Ulb -> Ward -> Society -> Property` is the registry hierarchy. A global `User` has active `Membership` records carrying role, ULB, and optional society/contractor scope. Resident-property links and collector-contractor assignments further restrict visibility. `SUPER_ADMIN` is still scoped to the selected membership's ULB, not an automatic cross-tenant query bypass.
 
-`authenticate` verifies an access JWT and rereads active user/membership records. Clients send `X-Membership-Id`; if absent, the server currently chooses the earliest active membership. A tenant ID in a path/query never grants access. Foreign resources normally appear as 404; unauthorized roles/memberships as 403.
+Public `GET /api/v1/access` advertises `open-demo` with five role aliases or `authenticated` with no aliases. Web and collector discover the mode without frontend flags. `NO_AUTH=true` requires `NODE_ENV=development` and `DEMO_MODE=true` and works with standard or compact fictional seeds. `.env.example` and `render.yaml` enable it; the hosted launcher defaults it to true unless explicitly false. Plain API configuration defaults to false.
+
+In open-demo mode, `authenticate` resolves `X-Demo-Role` (`resident`, `society`, `collector`, `supervisor`, `ulb`) to the exact active seeded user/membership and fictional tenant/scope, checking the seed marker. An optional `X-Membership-Id` must match. There is no visitor authentication: anyone can select any of these five shared identities, including admin roles, but not `SUPER_ADMIN` or another tenant. Profile edits, resident invitations and activation/deactivation are locked; fictional business records remain shared and mutable.
+
+With `NO_AUTH=false`, the retained flow verifies an access JWT and rereads active user/membership records. Clients send `X-Membership-Id`; if absent, the server currently chooses the earliest active membership. In either mode, a tenant ID in a path/query never grants access. Foreign resources normally appear as 404; unauthorized roles/memberships as 403.
 
 All operational records carry `ulbId`. Scoped application queries are supplemented by deferred same-tenant reference triggers in migration 003. This is **not PostgreSQL row-level security**. Migration 002 adds positive-weight/payment, date/score/coordinate checks, one verified weighed event per stop, and append-only audit/complaint-history triggers. Database administrators are still trusted; these triggers are not tamper-proof external archival.
 
@@ -47,7 +51,7 @@ Money is integer INR paise. Stored kg uses `numeric(10,3)`; domain summation/cha
 
 ## Capture To Verified Evidence
 
-1. Collector authenticates online, selects membership, binds a stable device UUID and caches today's ordered assigned routes. At most two active devices are allowed per collector.
+1. Collector discovers access online: open demo automatically selects the seeded collector, while authenticated mode requires OTP and membership selection. Both bind a stable device UUID and cache today's ordered assigned routes before first offline capture. At most two active devices are allowed per collector.
 2. Camera QR scanning or a selected-stop six-digit fallback resolves identity. The cached route already contains signed QR tokens: this is usable offline but not strong proof of physical presence.
 3. The app gathers fresh foreground GPS, a doorstep image and separate scale image/manual positive kg for each scheduled stream. An exception uses note/photo and no invented zero-weight collection.
 4. Resized JPEGs are copied into the app's durable directory. SQLite persists draft references; an exclusive transaction saves immutable event/photo records and removes the draft. Scope is `userId:membershipId`.
@@ -63,6 +67,8 @@ On restart, `SYNCING` recovers to pending; retry uses immutable UUID/payload and
 ## Evidence Storage
 
 Local storage serves signed PUT/GET capabilities through the API and is limited to development/test. S3 uses separate internal and client-reachable endpoints with five-minute presigned URLs. Photos are reserved before upload; confirmation decodes actual bytes with Sharp, strips metadata by reencoding, and hashes the normalized image. Normalized outputs use different keys from upload reservations. Server image dimensions are bounded to 1600 pixels per side and decoded inputs to 25 million pixels; uploads are capped at 8 MiB.
+
+No-login access does not remove private storage capabilities or QR signing. Keep `JWT_SECRET` and `QR_SECRET`; API calls use the selected demo role, while direct signed file transfers use only their capability URLs.
 
 General web uploads support images/PDF and never need to claim camera origin. PDF validation is limited to envelope/size checks; malware scanning is `NOT_CONFIGURED`. Images, QR, GPS and client timestamps remain evidence signals, not hardware attestation. There is no independent photo timestamp in the collector HTTP contract.
 
@@ -82,6 +88,8 @@ Default quiet hours are 21:00-07:00 IST; `SLA_BREACH` bypasses them. In-app reco
 
 ## Deployment Boundaries
 
-`pnpm dev` starts API/web/Expo, **not** the worker. Next rewrites `/api/v1` through server-only `API_INTERNAL_URL`. Public API/storage URLs must be reachable by the caller; localhost and Docker network names are not interchangeable. Web tokens are memory-only and a page reload requires sign-in; Expo tokens/device ID use SecureStore, while SQLite/JPEGs use the app sandbox rather than SQLCipher.
+`pnpm dev` starts API/web/Expo, **not** the worker. Next rewrites `/api/v1` through server-only `API_INTERNAL_URL`. Public API/storage URLs must be reachable by the caller; localhost and Docker network names are not interchangeable. In open demo, web opens as resident, switches five roles through a dropdown and persists only the selected alias in `sessionStorage`; reload requires no login. Web and collector use tokenless `X-Demo-Role` API calls, skip OTP/refresh and hide logout. The collector retains device registration and its scoped offline queue.
+
+With `NO_AUTH=false`, web tokens remain memory-only and a page reload requires sign-in; Expo tokens/device ID use SecureStore, while SQLite/JPEGs use the app sandbox rather than SQLCipher. Open demo is unsafe for real data or production, regardless of a production-built web client.
 
 The Dockerfile and Compose stack are authored development packaging and have not run here. Plain PostgreSQL 16 works; Compose chooses a PostGIS image but no migration installs or queries the extension. Readiness only probes PostgreSQL. Production OTP/provider onboarding, S3 validation, shared rate limiting, native-device tests, retention execution, backups/restore drills and capacity measurement remain release work, not features established by passing unit tests.

@@ -78,6 +78,19 @@ export async function hostedDemoActor(db: Db, userId: string): Promise<Actor> {
 
 export async function authenticate(request: FastifyRequest) {
   const app = request.server;
+  if (app.config.NO_AUTH === 'true') {
+    const alias = request.headers['x-demo-role'];
+    const expected = typeof alias === 'string' ? DEMO_USERS.find(user => user.alias === alias) : undefined;
+    if (!expected) return fail(403, 'DEMO_ROLE_INVALID', 'X-Demo-Role must be exactly resident, society, collector, supervisor, or ulb.');
+    const actor = await hostedDemoActor(app.db, expected.id);
+    const selected = request.headers['x-membership-id'];
+    if (selected !== undefined && (typeof selected !== 'string' || !uuid.safeParse(selected).success)) {
+      return fail(400, 'MEMBERSHIP_INVALID', 'X-Membership-Id must be a UUID.');
+    }
+    if (selected !== undefined && selected !== actor.membership.id) return fail(403, 'MEMBERSHIP_FORBIDDEN', 'No active membership authorizes this request.');
+    request.actor = actor;
+    return;
+  }
   let payload: { sub: string; type: string };
   try { payload = await request.jwtVerify<{ sub: string; type: string }>(); }
   catch { return fail(401, 'UNAUTHENTICATED', 'A valid access token is required.'); }

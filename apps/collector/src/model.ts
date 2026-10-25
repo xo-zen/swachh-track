@@ -10,13 +10,28 @@ export type PhotoKind = 'DOORSTEP' | 'SCALE' | 'EXCEPTION';
 export type PhotoStage = 'LOCAL' | 'PRESIGNED' | 'UPLOADED' | 'CONFIRMED';
 
 export interface Membership { id: string; role: string; name?: string }
-export interface AuthSession {
-  accessToken: string;
-  refreshToken: string;
+interface SessionIdentity {
   user: { id: string; name?: string };
   memberships: Membership[];
   membershipId: string | null;
   registeredMemberships: string[];
+}
+export interface AuthenticatedSession extends SessionIdentity {
+  mode: 'authenticated';
+  accessToken: string;
+  refreshToken: string;
+}
+export interface DemoSession extends SessionIdentity {
+  mode: 'open-demo';
+  demoRole: 'collector';
+  apiUrl: string;
+  deviceId: string;
+  membershipId: string;
+}
+export type AuthSession = AuthenticatedSession | DemoSession;
+export interface Access {
+  mode: AuthSession['mode'];
+  roles: { alias: 'resident' | 'society' | 'collector' | 'supervisor' | 'ulb'; role: string }[];
 }
 export interface RouteStop {
   id: string;

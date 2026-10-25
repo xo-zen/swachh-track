@@ -15,6 +15,7 @@ const environment = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DEMO_MODE: z.enum(['true', 'false']).default('false'),
   HOSTED_DEMO: z.enum(['true', 'false']).default('false'),
+  NO_AUTH: z.enum(['true', 'false']).default('false'),
   STORAGE_DRIVER: z.enum(['s3', 'local']).default('s3'),
   LOCAL_STORAGE_PATH: z.string().default('apps/api/.storage'),
   API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
@@ -41,6 +42,9 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
   }
   if (config.HOSTED_DEMO === 'true' && (config.NODE_ENV !== 'development' || config.DEMO_MODE !== 'true')) {
     throw new Error('HOSTED_DEMO requires NODE_ENV=development and DEMO_MODE=true');
+  }
+  if (config.NO_AUTH === 'true' && (config.NODE_ENV !== 'development' || config.DEMO_MODE !== 'true')) {
+    throw new Error('NO_AUTH requires NODE_ENV=development and DEMO_MODE=true');
   }
   if (config.NODE_ENV === 'production' && config.STORAGE_DRIVER === 'local') {
     throw new Error('Local storage is development/test only');

@@ -4,6 +4,7 @@ import { parseResult, parseResultRow, record, text, type PhotoRow } from './mode
 import { uploadJpeg } from './media';
 import { checkpointPhoto, freezeWirePayload, listEvents, listPhotos, transition } from './storage';
 
+type SyncApi = Pick<CollectorApi, 'scope' | 'request'>;
 let flight: Promise<void> | null = null;
 let activeScope: string | null = null;
 export function isSyncing(): boolean { return flight !== null; }
@@ -24,7 +25,7 @@ function isUploadExpired(error: unknown): boolean {
   catch { return false; }
 }
 
-async function syncPhoto(api: CollectorApi, initial: PhotoRow): Promise<void> {
+async function syncPhoto(api: SyncApi, initial: PhotoRow): Promise<void> {
   let photo = initial;
   const base = `/collector/pickups/${encodeURIComponent(photo.eventUuid)}/photos`;
   for (let renewal = 0; renewal < 2; renewal += 1) {
@@ -71,7 +72,7 @@ async function syncPhoto(api: CollectorApi, initial: PhotoRow): Promise<void> {
   }
 }
 
-async function run(api: CollectorApi, changed: () => void, manual: boolean): Promise<void> {
+async function run(api: SyncApi, changed: () => void, manual: boolean): Promise<void> {
   const network = await NetInfo.fetch();
   if (!network.isConnected || network.isInternetReachable === false) throw new Error('offline');
   const events = await listEvents(api.scope);
@@ -102,7 +103,7 @@ async function run(api: CollectorApi, changed: () => void, manual: boolean): Pro
   }
 }
 
-export function syncQueue(api: CollectorApi, changed: () => void, manual = false): Promise<void> {
+export function syncQueue(api: SyncApi, changed: () => void, manual = false): Promise<void> {
   if (flight) {
     if (activeScope !== api.scope) return Promise.reject(new Error('syncBusy'));
     return flight;
@@ -112,7 +113,7 @@ export function syncQueue(api: CollectorApi, changed: () => void, manual = false
   return flight;
 }
 
-export async function refreshVerdicts(api: CollectorApi): Promise<unknown> {
+export async function refreshVerdicts(api: SyncApi): Promise<unknown> {
   const remaining = new Map((await listEvents(api.scope)).filter((event) => event.transport === 'SYNCED').map((event) => [event.uuid, event]));
   const cursors = new Set<string>();
   let cursor: string | null = null;

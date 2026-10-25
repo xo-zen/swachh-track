@@ -15,6 +15,7 @@ const deviceKey = 'swachh.collector.device.v1';
 const boundId = 'b3a58d97-bfb4-4ce2-a7ec-293dcfc97237';
 const membershipId = 'e9285e69-befc-436b-9bc9-c5afde5db42d';
 const auth: AuthSession = {
+  mode: 'authenticated',
   accessToken: 'access', refreshToken: 'refresh', user: { id: 'collector-user' },
   memberships: [{ id: membershipId, role: 'COLLECTOR' }, { id: 'other-membership', role: 'COLLECTOR' }],
   membershipId, registeredMemberships: [],

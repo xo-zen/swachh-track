@@ -14,6 +14,7 @@ describe.each([
       NODE_ENV: 'test',
       DEMO_MODE: 'false',
       HOSTED_DEMO: 'false',
+      NO_AUTH: 'false',
       DATABASE_URL: 'postgresql://localhost/test',
       JWT_SECRET: 'test-only-secret-with-more-than-32-bytes',
       QR_SECRET: 'test-only-qr-secret-with-more-than-32-bytes',

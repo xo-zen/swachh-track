@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Activity, Bell, Building2, CalendarDays, ClipboardCheck, FileCheck2, FileText, HelpCircle, Home, Leaf, LogOut, MapPinned, Menu, PackageCheck, Settings2, ShieldCheck, Smartphone, Truck, Users, X, type LucideIcon } from 'lucide-react';
 import { Button, ErrorState } from '@swachh/ui';
-import { errorMessage } from '@/lib/api';
+import { errorMessage, type DemoRole } from '@/lib/api';
 import { HOSTED_DEMO_ENABLED } from '@/lib/demo';
 import { useI18n, type TranslationKey } from '@/lib/i18n';
 import { HostedDemoNotice } from './hosted-demo';
@@ -64,14 +64,17 @@ function Screen({ section }: { section: string }) {
 }
 
 export function Console() {
-  const { t } = useI18n(); const { identity, membership, select, logout } = useAuth(); const params = useSearchParams(); const router = useRouter(); const pathname = usePathname();
+  const { t } = useI18n(); const { identity, membership, access, loading, startupError, demoRole, open, select, logout } = useAuth(); const params = useSearchParams(); const router = useRouter(); const pathname = usePathname();
   const [mobileMenu, setMobileMenu] = useState(false); const [tour, setTour] = useState(params.get('demo') === '1'); const [step, setStep] = useState(0); const [error, setError] = useState(''); const [online, setOnline] = useState(true);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine); update();
     window.addEventListener('online', update); window.addEventListener('offline', update);
     return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
   }, []);
-  if (!identity) return <Login />;
+  if (loading || startupError || !access) return <main className="startup-page"><Leaf size={36} /><h1>{t('app')}</h1>{loading ? <p role="status">{t('openingWorkspace')}</p> : <><ErrorState message={startupError} /><Button onClick={() => void open(demoRole ?? undefined)}>{t('retry')}</Button></>}</main>;
+  if (!identity) return access.mode === 'authenticated' ? <Login /> : <main className="startup-page"><ErrorState message={t('noMemberships')} /><Button onClick={() => void open(demoRole ?? undefined)}>{t('retry')}</Button></main>;
+  const noAuth = access.mode === 'open-demo';
+  const fictional = HOSTED_DEMO_ENABLED || noAuth;
   const allowed = items.filter(item => item.roles.includes(membership?.role ?? ''));
   const requested = params.get('section'); const section = allowed.find(item => item.key === requested)?.key ?? allowed[0]?.key ?? '';
   const noScope = membership?.role === 'SOCIETY_ADMIN' ? !membership.societyId : membership?.role === 'ULB_ADMIN' ? !membership.ulbId : false;
@@ -87,15 +90,15 @@ export function Console() {
     {mobileMenu && <button className="menu-backdrop" aria-label={t('close')} onClick={() => setMobileMenu(false)} />}
     <div className="main-shell">
       <header className="topbar"><div className="header-left"><Button variant="quiet" className="mobile-menu" aria-label={t('menu')} onClick={() => setMobileMenu(true)}><Menu size={22} /></Button><div className="breadcrumb">{t('console')} <span>/</span> <strong>{t(section)}</strong></div></div>
-        <div className="header-controls"><label className="membership-control"><span className="sr-only">{t('membership')}</span><select aria-label={t('membership')} value={membership?.id ?? ''} onChange={event => { select(event.target.value); setMobileMenu(false); }}>{identity.memberships.filter(item => !item.status || item.status === 'ACTIVE').map(item => <option key={item.id} value={item.id}>{item.society?.name || item.societyId?.slice(0, 8) || item.ulb?.name || item.ulbId?.slice(0, 8)} · {t(item.role)}</option>)}</select></label>
-          <LanguageSwitch /><Button variant="quiet" aria-label={t('tourStart')} onClick={() => setTour(true)}><HelpCircle size={20} /></Button><Button variant="quiet" aria-label={t('logout')} onClick={async () => { try { await logout(); } catch (failure) { setError(errorMessage(failure)); } }}><LogOut size={19} /></Button>
+        <div className="header-controls"><label className="membership-control"><span className="sr-only">{t(noAuth ? 'demoRole' : 'membership')}</span>{noAuth ? <select aria-label={t('demoRole')} value={demoRole ?? ''} onChange={event => { void open(event.target.value as DemoRole); setMobileMenu(false); }}>{access.roles.map(item => <option key={item.alias} value={item.alias}>{t(item.role)}</option>)}</select> : <select aria-label={t('membership')} value={membership?.id ?? ''} onChange={event => { select(event.target.value); setMobileMenu(false); }}>{identity.memberships.filter(item => !item.status || item.status === 'ACTIVE').map(item => <option key={item.id} value={item.id}>{item.society?.name || item.societyId?.slice(0, 8) || item.ulb?.name || item.ulbId?.slice(0, 8)} · {t(item.role)}</option>)}</select>}</label>
+          <LanguageSwitch /><Button variant="quiet" aria-label={t('tourStart')} onClick={() => setTour(true)}><HelpCircle size={20} /></Button>{!noAuth && <Button variant="quiet" aria-label={t('logout')} onClick={async () => { try { await logout(); } catch (failure) { setError(errorMessage(failure)); } }}><LogOut size={19} /></Button>}
         </div>
       </header>
-      <main id="main-content" className="main-content"><HostedDemoNotice /><div className="page-kicker"><span><span className="live-dot" />{t(HOSTED_DEMO_ENABLED ? 'hostedDemoRecords' : 'liveData')}</span><span>IST · UTC+05:30</span></div>
+      <main id="main-content" className="main-content"><HostedDemoNotice /><div className="page-kicker"><span><span className="live-dot" />{t(fictional ? 'hostedDemoRecords' : 'liveData')}</span><span>IST · UTC+05:30</span></div>
         {!online && <Notice>{t('offline')}</Notice>}{error && <ErrorState message={error} />}
         {!membership ? <Notice>{t('noMemberships')}</Notice> : noScope ? <Notice>{t('missingScope')}</Notice> : <div key={`${membership.id}-${section}`}><Screen section={section} /></div>}
       </main>
-      <footer className="console-footer"><span>{t('app')} / {t('console')}</span><span>{t(HOSTED_DEMO_ENABLED ? 'hostedDemoData' : 'noFabrication')}</span></footer>
+      <footer className="console-footer"><span>{t('app')} / {t('console')}</span><span>{t(fictional ? 'hostedDemoData' : 'noFabrication')}</span></footer>
     </div>
     {tour && <Modal title={t('tour')} onClose={() => setTour(false)}><div className="tour-content"><span className="eyebrow">{t('step')} {step + 1} {t('of')} 5</span><h3>{t(HOSTED_DEMO_ENABLED && step === 0 ? 'hostedDemoTour1' : `tour${step + 1}`)}</h3><Notice>{t('reviewNotice')}</Notice><div className="tour-progress">{[0, 1, 2, 3, 4].map(value => <span key={value} className={value <= step ? 'active' : ''} />)}</div><div className="button-row"><Button variant="secondary" disabled={step === 0} onClick={() => setStep(value => value - 1)}>{t('previous')}</Button><Button onClick={() => { if (step === 4) { setTour(false); setStep(0); } else setStep(value => value + 1); }}>{t(step === 4 ? 'finish' : 'next')}</Button></div></div></Modal>}
   </div>;

@@ -20,6 +20,39 @@ Sources: `apps/api/src/{auth,registry,pickups,storage,operations,billing,complia
 
 ## Authentication And Errors
 
+### Open Demo (`NO_AUTH=true`)
+
+Public `GET /api/v1/access` requires no credentials and returns `Cache-Control: no-store`. In open-demo mode its response is:
+
+```json
+{
+  "mode": "open-demo",
+  "roles": [
+    { "alias": "resident", "role": "RESIDENT" },
+    { "alias": "society", "role": "SOCIETY_ADMIN" },
+    { "alias": "collector", "role": "COLLECTOR" },
+    { "alias": "supervisor", "role": "SUPERVISOR" },
+    { "alias": "ulb", "role": "ULB_ADMIN" }
+  ]
+}
+```
+
+Otherwise it returns `{"mode":"authenticated","roles":[]}`. Web and collector discover this automatically; no frontend mode flag is needed. `NO_AUTH=true` requires `NODE_ENV=development` and `DEMO_MODE=true` and supports either fictional seed profile. `.env.example` and `render.yaml` enable it; the hosted launcher defaults it to `true` unless explicitly `false`, while plain API configuration defaults to `false`.
+
+```sh
+curl --fail-with-body http://localhost:4000/api/v1/access
+curl --fail-with-body http://localhost:4000/api/v1/me \
+  -H 'X-Demo-Role: resident'
+```
+
+Send `X-Demo-Role` on business API requests, including downloads and upload reservation/confirmation, without a bearer token. It must exactly match one of the five short aliases above, not an email or role enum. Missing/invalid aliases return 403 `DEMO_ROLE_INVALID`. The server resolves the exact active seeded user/membership, tenant and scope and requires the fictional seed marker; altered identities are rejected. Optional `X-Membership-Id` must match that membership. Normal role/tenant checks remain; neither `SUPER_ADMIN` nor another tenant can be selected.
+
+This is public role selection, not visitor authentication: anyone can act as any of the five shared demo identities, including admins. Use fictional data only. `PATCH /me`, resident invitations and resident activation/deactivation return 403 `HOSTED_DEMO_IDENTITY_LOCKED`. OTP request/verify, refresh and logout return 403 `AUTH_DISABLED`; open-demo clients do not call them. Signed file capabilities and QR signing remain required; direct signed storage requests do not carry API identity headers.
+
+### Authenticated Mode (`NO_AUTH=false`)
+
+Explicitly disable open-demo access and restart the API to use the retained OTP/token flow:
+
 ```sh
 curl --fail-with-body -X POST http://localhost:4000/api/v1/auth/otp/request \
   -H 'Content-Type: application/json' \
@@ -30,7 +63,7 @@ curl --fail-with-body -X POST http://localhost:4000/api/v1/auth/otp/verify \
   -d '{"phone":"+919000000002","code":"123456"}'
 ```
 
-These are runnable only against the seeded development/demo server. Verification returns `{accessToken,refreshToken,user,memberships}`. Subsequent examples assume `ACCESS_TOKEN`, `MEMBERSHIP_ID` and resource IDs are taken from that response and authorized list endpoints, not invented UUIDs.
+These are runnable only against the seeded development/demo server with `NO_AUTH=false`. Verification returns `{accessToken,refreshToken,user,memberships}`. The following example assumes `ACCESS_TOKEN`, `MEMBERSHIP_ID` and resource IDs are taken from that response and authorized list endpoints, not invented UUIDs.
 
 ```sh
 curl --fail-with-body http://localhost:4000/api/v1/me \
@@ -38,9 +71,11 @@ curl --fail-with-body http://localhost:4000/api/v1/me \
   -H "X-Membership-Id: $MEMBERSHIP_ID"
 ```
 
-Send both headers on business requests. The server validates membership ownership and scope; absent `X-Membership-Id` currently falls back to the earliest active membership. Clients should select explicitly. Access JWT lifetime is 15 minutes; refresh tokens expire after 30 days and rotate on use. Refresh-token reuse revokes the family. Logout revokes the refresh family but does not immediately invalidate an already-issued access JWT.
+In authenticated mode, send both headers on business requests; `X-Demo-Role` is not an authentication alternative. The server validates membership ownership and scope; absent `X-Membership-Id` currently falls back to the earliest active membership. Clients should select explicitly. Access JWT lifetime is 15 minutes; refresh tokens expire after 30 days and rotate on use. Refresh-token reuse revokes the family. Logout revokes the refresh family but does not immediately invalidate an already-issued access JWT.
 
 OTP expires after five minutes, permits five verification attempts, has a 60-second request cooldown and a five-request-per-phone/hour database-backed limit. Request/verify also have process-local IP limits. Non-demo sign-in returns 503 `OTP_PROVIDER_NOT_CONFIGURED`; production rejects demo mode. No request auto-provisions a new user.
+
+### Errors And Common Conventions
 
 Standard failures use:
 
@@ -64,13 +99,16 @@ Dates are `YYYY-MM-DD`; instants must include UTC or an offset. Money inputs are
 
 All paths below omit `/api/v1`.
 
+The `/auth/*` routes below require `NO_AUTH=false`. Identity mutation locks also apply when `HOSTED_DEMO=true`, even with authentication enabled.
+
 | Method      | Path                   | Input / behavior                                                                  |
 | ----------- | ---------------------- | --------------------------------------------------------------------------------- |
+| GET         | `/access`              | Public mode discovery: `open-demo` with five `{alias,role}` entries, or `authenticated` with `roles:[]` |
 | POST        | `/auth/otp/request`    | `{phone}`; 202 with expiry/cooldown; demo returns `demoCode`                      |
 | POST        | `/auth/otp/verify`     | `{phone,code}`; tokens and memberships                                            |
 | POST        | `/auth/refresh`        | `{refreshToken}`; replace both returned tokens                                    |
 | POST        | `/auth/logout`         | `{refreshToken}`; revoke refresh family                                           |
-| GET / PATCH | `/me`                  | Read identity/scope; patch name, email, `en`/`hi` locale or preferences           |
+| GET / PATCH | `/me`                  | Read identity/scope; patch name, email, `en`/`hi` locale or preferences; PATCH locked in open/hosted demo |
 | POST        | `/me/privacy-requests` | `{type:"EXPORT"}` or `ERASURE`; 202 review request, not completed export/deletion |
 | GET         | `/notifications`       | Current user's delivered in-app records; worker must process outbox               |
 | PATCH       | `/notifications/:id`   | `{read:true}`                                                                     |
@@ -88,8 +126,8 @@ Unless stated otherwise, these society routes allow `SOCIETY_ADMIN`, `ULB_ADMIN`
 | GET        | `S/properties/qr-sheet.pdf` | `limit` 1-240, default 20; signed QR PDF                                      |
 | POST       | `S/properties/rotate-qr`    | `{}`; rewrite property hashes using configured current QR secret/version      |
 | GET        | `S/residents`               | Resident links                                                                |
-| POST       | `S/residents/invite`        | `{phone,name,propertyId}`; create/link resident, not delivered SMS invitation |
-| PATCH      | `S/residents/:id`           | `{active:boolean}`                                                            |
+| POST       | `S/residents/invite`        | `{phone,name,propertyId}`; create/link resident, not delivered SMS invitation; locked in open/hosted demo |
+| PATCH      | `S/residents/:id`           | `{active:boolean}`; locked in open/hosted demo                                  |
 | GET / POST | `S/schedules`               | Full schedule body below                                                      |
 | PATCH      | `S/schedules/:id`           | Full schedule body, not a partial patch                                       |
 | GET / POST | `S/vendors`                 | POST `{name,type,authorizationNumber,validUntil,documentId,contractorId?}`    |
@@ -119,7 +157,7 @@ Sunday is 0. Alternative pattern: `{"type":"EVERY_N_DAYS","everyNDays":4}` ancho
 1. `POST /files/presign` with `{filename,contentType,size,purpose}`. Types: JPEG, PNG, WEBP, PDF. Purposes: `COMPLAINT`, `RESOLUTION`, `COMPLIANCE`, `DOCUMENT`, `PROCESSING`, `HANDOVER`. Collector role must use its camera route instead.
 2. Receive `{fileId,uploadUrl,expiresIn:300}`. PUT actual bytes to `uploadUrl` with the reserved content type and **without** API authorization headers.
 3. `POST /files/:id/confirm {}`. The server verifies actual size/bytes, normalizes images, and returns confirmed IDs/hash/storage key. Use an image `fileId` as complaint/resolution `photoId`; PDF is document-only.
-4. For a compliance document, submit that owned confirmed `fileId` or returned storage key as `storageKey`. Arbitrary object paths are not accepted. Read private documents through their authenticated download endpoint, then fetch its signed URL without bearer headers.
+4. For a compliance document, submit that owned confirmed `fileId` or returned storage key as `storageKey`. Arbitrary object paths are not accepted. Read private documents through their role-scoped download endpoint, then fetch its signed URL without API identity headers.
 
 ### Collector Evidence
 

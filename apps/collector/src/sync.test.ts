@@ -50,7 +50,7 @@ function createApi() {
     if (path === '/collector/pickups/batch') return { results: [result] };
     throw new Error('Unexpected test request');
   });
-  const api: CollectorApi = { scope: 'user:membership', request, register: vi.fn() };
+  const api: Pick<CollectorApi, 'scope' | 'request'> = { scope: 'user:membership', request };
   return { api, request };
 }
 

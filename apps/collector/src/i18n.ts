@@ -1,5 +1,7 @@
 export type Language = 'en' | 'hi';
 const en = {
+  startupRequired: 'Connect and retry startup to check collector access. Local evidence is kept.',
+  cachedSession: 'Using the saved collector session. Server access could not be checked; local evidence is kept.',
   qrUnavailable: 'This property QR is unavailable or rotated. Ask your supervisor to restore it, then refresh the route. Other stops remain available.',
   app: 'Swachh-Track', collector: 'Collector', language: 'Hindi / English', loading: 'Loading...', working: 'Working...',
   phone: 'Phone (+91...)', code: '6-digit OTP', requestOtp: 'Send OTP', verifyOtp: 'Sign in', otpSent: 'OTP sent. Enter the code received on your phone.',
@@ -30,6 +32,8 @@ const en = {
 } as const;
 export type TranslationKey = keyof typeof en;
 const hi: Record<TranslationKey, string> = {
+  startupRequired: 'संग्रह कर्मचारी की पहुँच जाँचने के लिए इंटरनेट जोड़कर फिर शुरू करें। स्थानीय प्रमाण सुरक्षित हैं।',
+  cachedSession: 'सेव किया गया संग्रह कर्मचारी सत्र उपयोग में है। सर्वर की पहुँच नहीं जाँची जा सकी; स्थानीय प्रमाण सुरक्षित हैं।',
   qrUnavailable: 'इस संपत्ति का QR उपलब्ध नहीं है या बदल गया है। पर्यवेक्षक से इसे बहाल करवाएँ, फिर मार्ग अपडेट करें। दूसरे पड़ाव उपलब्ध हैं।',
   app: 'स्वच्छ-ट्रैक', collector: 'संग्रह कर्मचारी', language: 'हिन्दी / English', loading: 'लोड हो रहा है...', working: 'काम जारी है...',
   phone: 'फ़ोन (+91...)', code: '6 अंकों का OTP', requestOtp: 'OTP भेजें', verifyOtp: 'साइन इन करें', otpSent: 'OTP भेजा गया। अपने फ़ोन पर आया कोड डालें।',

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { record, text, type Row } from '@/lib/data';
 import { HOSTED_DEMO_ENABLED } from '@/lib/demo';
-import { useScope } from './providers';
+import { useAuth, useScope } from './providers';
 import { ActionForm, DataTable, DownloadButton, Notice, SectionHeading, field, streamOptions } from './operations';
 
 const propertyFields = [field('unitNo', 'unitNo'), field('block', 'block', { required: false }), field('floor', 'floor', { type: 'number', required: false, step: '1' }), field('latitude', 'latitude', { type: 'number', min: -90, max: 90 }), field('longitude', 'longitude', { type: 'number', min: -180, max: 180 }), field('status', 'status', { type: 'select', value: 'ACTIVE', options: ['ACTIVE', 'INACTIVE'].map(value => ({ value, label: value })) })];
@@ -13,7 +13,9 @@ export function Properties() {
 }
 export function Residents() {
   const { t } = useI18n(); const { society } = useScope();
-  return <div className="section-stack"><SectionHeading title={t('residents')} detail={t(HOSTED_DEMO_ENABLED ? 'hostedDemoIdentityLocked' : 'inviteHint')} actions={!HOSTED_DEMO_ENABLED && <ActionForm title="invite" variant="primary" path={`${society}/residents/invite`} fields={[field('name', 'name'), field('phone', 'phone'), field('propertyId', 'propertyId', { source: `${society}/properties`, optionLabel: 'unitNo' })]} />} /><DataTable path={`${society}/residents`} title="residents" columns={[{ key: 'user.name', label: 'name' }, { key: 'user.phone', label: 'phone' }, { key: 'property.unitNo', label: 'unitNo' }, { key: 'active', label: 'active' }]} rowActions={HOSTED_DEMO_ENABLED ? undefined : row => row.active !== false && <ActionForm title="deactivate" path={`${society}/residents/${text(row.id)}`} method="PATCH" body={{ active: false }} fields={[]} variant="danger" />} /></div>;
+  const { access } = useAuth();
+  const identityLocked = HOSTED_DEMO_ENABLED || access?.mode === 'open-demo';
+  return <div className="section-stack"><SectionHeading title={t('residents')} detail={t(identityLocked ? 'hostedDemoIdentityLocked' : 'inviteHint')} actions={!identityLocked && <ActionForm title="invite" variant="primary" path={`${society}/residents/invite`} fields={[field('name', 'name'), field('phone', 'phone'), field('propertyId', 'propertyId', { source: `${society}/properties`, optionLabel: 'unitNo' })]} />} /><DataTable path={`${society}/residents`} title="residents" columns={[{ key: 'user.name', label: 'name' }, { key: 'user.phone', label: 'phone' }, { key: 'property.unitNo', label: 'unitNo' }, { key: 'active', label: 'active' }]} rowActions={identityLocked ? undefined : row => row.active !== false && <ActionForm title="deactivate" path={`${society}/residents/${text(row.id)}`} method="PATCH" body={{ active: false }} fields={[]} variant="danger" />} /></div>;
 }
 
 const scheduleFields = [field('stream', 'stream', { type: 'select', options: streamOptions }), field('patternType', 'pattern', { type: 'select', value: 'WEEKLY', options: [{ value: 'WEEKLY', label: 'weekly' }, { value: 'EVERY_N_DAYS', label: 'everyN' }] }), field('weekdays', 'weekdays', { value: '1,3,5', required: false }), field('everyNDays', 'intervalDays', { type: 'number', min: 1, max: 366, step: '1', required: false }), field('windowStart', 'windowStart', { type: 'time' }), field('windowEnd', 'windowEnd', { type: 'time' }), field('activeFrom', 'activeFrom', { type: 'date' }), field('activeTo', 'activeTo', { type: 'date', required: false })];

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
-import { hmac } from '../src/core.js';
+import { hmac, istDate } from '../src/core.js';
 import { demoId, DEMO_SEED_ACTION, DEMO_ULB_CODE, DEMO_ULB_ID, DEMO_USERS } from '../src/demo.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -29,9 +29,15 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
   let admin: PrismaClient; let db: PrismaClient; let app: FastifyInstance;
   let isolatedUrl: string; let created = false;
   const headers = (userId = resident.id, membershipId?: string) => ({
-    authorization: `Bearer ${app.jwt.sign({ sub: userId, type: 'access' })}`,
-    ...(membershipId ? { 'x-membership-id': membershipId } : {}),
+    ...(app.config.NO_AUTH === 'true' ? { 'x-demo-role': DEMO_USERS.find(user => user.id === userId)?.alias ?? userId } : { authorization: `Bearer ${app.jwt.sign({ sub: userId, type: 'access' })}` }),
+    ...(membershipId !== undefined ? { 'x-membership-id': membershipId } : {}),
   });
+  async function openDemo(HOSTED_DEMO: 'true' | 'false' = 'false') {
+    const config = { ...app.config, NO_AUTH: 'true' as const, HOSTED_DEMO };
+    await app.close();
+    app = await buildApp({ db, logger: false, config });
+    await app.ready();
+  }
   const requestOtp = (phone: string) => app.inject({ method: 'POST', url: '/api/v1/auth/otp/request', payload: { phone } });
   const verifyOtp = (phone: string, code = '123456') => app.inject({ method: 'POST', url: '/api/v1/auth/otp/verify', payload: { phone, code } });
   const refresh = (refreshToken: string) => app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken } });
@@ -70,7 +76,7 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
     await db.$connect();
   });
   beforeEach(async () => {
-    await db.$executeRaw`TRUNCATE "AuditLog", "PrivacyRequest", "Schedule", "Resident", "Property", "Membership", "Contractor", "Society", "Ward", "Ulb", "RefreshToken", "OtpChallenge", "User" CASCADE`;
+    await db.$executeRaw`TRUNCATE "AuditLog", "PrivacyRequest", "Schedule", "Resident", "Property", "Membership", "Contractor", "Society", "Ward", "Ulb", "RefreshToken", "OtpChallenge", "User", "Collector", "Route", "RouteStop", "PickupEvent", "PickupException", "Photo", "IdempotencyKey", "RejectedSubmission", "Notification" CASCADE`;
     await db.ulb.createMany({ data: [
       { id: DEMO_ULB_ID, code: DEMO_ULB_CODE, name: 'Hosted demo fixture', state: 'Test' },
       { id: foreignUlbId, code: 'HOSTED-TEST-FOREIGN', name: 'Foreign fixture', state: 'Test' },
@@ -94,7 +100,7 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
     await db.auditLog.create({ data: { ulbId: DEMO_ULB_ID, actorId: DEMO_USERS[4].id, action: DEMO_SEED_ACTION, entity: 'Ulb', entityId: DEMO_ULB_ID } });
     app = await buildApp({ db, logger: false, config: {
       DATABASE_URL: isolatedUrl, JWT_SECRET: secret, QR_SECRET: secret,
-      NODE_ENV: 'development', DEMO_MODE: 'true', HOSTED_DEMO: 'true', STORAGE_DRIVER: 'local',
+      NODE_ENV: 'development', DEMO_MODE: 'true', HOSTED_DEMO: 'true', NO_AUTH: 'false', STORAGE_DRIVER: 'local',
     } });
     await app.ready();
   });
@@ -150,8 +156,9 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
     'wrong membership ID', 'wrong role', 'wrong society', 'wrong contractor', 'wrong tenant', 'wrong tenant code',
     'missing marker', 'foreign marker', 'wrong marker entity', 'wrong marker entity ID',
   ];
-  it.each(invalidStates)('fails closed across request, verify, refresh and access with %s', async state => {
-    const token = await existingRefresh(resident.id);
+  it.each(invalidStates.flatMap(state => [false, true].map(open => ({ state, open }))))('fails closed with $state (open=$open)', async ({ state, open }) => {
+    if (open) await openDemo();
+    const token = open ? '' : await existingRefresh(resident.id);
     if (state === 'changed phone') await db.user.update({ where: { id: resident.id }, data: { phone: '+919123450001' } });
     if (state === 'changed email') await db.user.update({ where: { id: resident.id }, data: { email: 'changed@example.test' } });
     if (state === 'inactive user') await db.user.update({ where: { id: resident.id }, data: { status: 'INACTIVE' } });
@@ -174,6 +181,14 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
         ulbId: state === 'foreign marker' ? foreignUlbId : DEMO_ULB_ID, actorId: DEMO_USERS[4].id, action: DEMO_SEED_ACTION,
         entity: state === 'wrong marker entity' ? 'User' : 'Ulb', entityId: state === 'wrong marker entity ID' ? foreignUlbId : DEMO_ULB_ID,
       } });
+    }
+    if (open) {
+      const me = await app.inject({ url: '/api/v1/me', headers: headers() });
+      expect(me.statusCode, me.body).toBe(403);
+      expect(me.json().error.code).toBe('HOSTED_DEMO_IDENTITY_FORBIDDEN');
+      expect(await db.otpChallenge.count()).toBe(0);
+      expect(await db.refreshToken.count()).toBe(0);
+      return;
     }
     const request = await requestOtp(resident.phone);
     expect(request.statusCode, request.body).toBe(403);
@@ -199,8 +214,13 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
     expect((await verifyOtp(resident.phone)).statusCode).toBe(403);
     expect((await refresh(await existingRefresh(impostor.id))).statusCode).toBe(403);
     expect((await app.inject({ url: '/api/v1/me', headers: headers(impostor.id) })).statusCode).toBe(403);
+    await openDemo();
+    const me = await app.inject({ url: '/api/v1/me', headers: headers() });
+    expect(me.statusCode, me.body).toBe(403);
+    expect(me.json().error.code).toBe('HOSTED_DEMO_IDENTITY_FORBIDDEN');
   });
-  it('blocks all profile patches, invitations and resident activation changes without writes', async () => {
+  it.each([false, true])('blocks all profile patches, invitations and resident activation changes without writes (open=%s)', async open => {
+    if (open) await openDemo();
     const original = await db.user.findUniqueOrThrow({ where: { id: resident.id } });
     for (const payload of [
       { name: 'Changed' }, { email: 'changed@example.test' }, { locale: 'hi' },
@@ -226,7 +246,8 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
     expect((await db.resident.findFirstOrThrow()).active).toBe(true);
     expect(await db.auditLog.count()).toBe(1);
   });
-  it('keeps synthetic schedule writes and resident reads usable with existing role checks', async () => {
+  it.each([false, true])('keeps synthetic schedule writes and resident reads usable with existing role checks (open=%s)', async open => {
+    if (open) await openDemo();
     const payload = { stream: 'WET', pattern: { type: 'WEEKLY', weekdays: [1, 3, 5] }, windowStart: '07:00', windowEnd: '11:00', activeFrom: '2026-01-01' };
     const url = `/api/v1/societies/${society.societyId}/schedules`;
     const result = await app.inject({ method: 'POST', url, headers: headers(society.id), payload });
@@ -268,6 +289,12 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
   it('leaves normal development demo login, profile and invitations unchanged when explicitly off', async () => {
     const ordinary = await buildApp({ db, logger: false, config: { ...app.config, HOSTED_DEMO: 'false' } });
     try {
+      expect((await ordinary.inject({ url: '/api/v1/access' })).json()).toEqual({ mode: 'authenticated', roles: [] });
+      expect((await ordinary.inject({ url: '/api/v1/me', headers: { 'x-demo-role': 'resident' } })).statusCode).toBe(401);
+      const selected = await ordinary.inject({ url: '/api/v1/me', headers: { ...headers(resident.id, resident.membershipId), 'x-demo-role': 'ulb' } });
+      expect(selected.statusCode, selected.body).toBe(200);
+      expect(selected.json().activeMembership.id).toBe(resident.membershipId);
+      expect(selected.json().memberships).toHaveLength(3);
       const phone = outsiders[2].phone;
       expect((await ordinary.inject({ method: 'POST', url: '/api/v1/auth/otp/request', payload: { phone } })).statusCode).toBe(202);
       expect((await ordinary.inject({ method: 'POST', url: '/api/v1/auth/otp/verify', payload: { phone, code: '123456' } })).statusCode).toBe(200);
@@ -276,5 +303,73 @@ suite('hosted demo API (disposable, separately migrated database)', () => {
       expect(invited.statusCode, invited.body).toBe(201);
       expect((await ordinary.inject({ method: 'PATCH', url: `/api/v1/societies/${society.societyId}/residents/${invited.json().resident.id}`, headers: headers(society.id, society.membershipId), payload: { active: false } })).statusCode).toBe(200);
     } finally { await ordinary.close(); }
+  });
+  it.each(['false', 'true'] as const)('allows exactly five token-free demo actors with HOSTED_DEMO=%s', async HOSTED_DEMO => {
+    await openDemo(HOSTED_DEMO);
+    for (const user of DEMO_USERS) {
+      for (const requestHeaders of [headers(user.id), { ...headers(user.id, user.membershipId), authorization: 'Bearer deliberately-invalid' }]) {
+        const me = await app.inject({ url: '/api/v1/me', headers: requestHeaders });
+        expect(me.statusCode, me.body).toBe(200);
+        expect(me.json().user).toMatchObject({ id: user.id, phone: user.phone, email: user.email });
+        expect(me.json().memberships.map((m: { id: string }) => m.id)).toEqual([user.membershipId]);
+        expect(me.json().activeMembership).toMatchObject({ id: user.membershipId, role: user.role, ulbId: DEMO_ULB_ID });
+        expect(me.json()).not.toHaveProperty('accessToken');
+        expect(me.json()).not.toHaveProperty('refreshToken');
+        expect(me.headers['set-cookie']).toBeUndefined();
+      }
+      for (const membership of [foreignMembership(user.id), extraMembership(user.id), randomUUID(), DEMO_USERS.find(other => other.id !== user.id)!.membershipId]) {
+        const denied = await app.inject({ url: '/api/v1/me', headers: headers(user.id, membership) });
+        expect(denied.statusCode, denied.body).toBe(403);
+        expect(denied.json().error.code).toBe('MEMBERSHIP_FORBIDDEN');
+      }
+      for (const membership of ['', 'not-a-uuid', `${user.membershipId},${user.membershipId}`]) {
+        const invalid = await app.inject({ url: '/api/v1/me', headers: headers(user.id, membership) });
+        expect(invalid.statusCode, invalid.body).toBe(400);
+        expect(invalid.json().error.code).toBe('MEMBERSHIP_INVALID');
+      }
+      const admin = await app.inject({ method: 'POST', url: '/api/v1/admin/ulbs', headers: headers(user.id), payload: { name: 'Forbidden tenant', state: 'Test', code: 'FORBIDDEN' } });
+      expect(admin.statusCode, admin.body).toBe(403);
+      expect(admin.json().error.code).toBe('ROLE_FORBIDDEN');
+    }
+    const jwtOnly = await app.inject({ url: '/api/v1/me', headers: { authorization: `Bearer ${app.jwt.sign({ sub: resident.id, type: 'access' })}` } });
+    expect(jwtOnly.statusCode, jwtOnly.body).toBe(403);
+    expect(jwtOnly.json().error.code).toBe('DEMO_ROLE_INVALID');
+    expect((await app.inject({ url: `/api/v1/ulb/${foreignUlbId}/pickups`, headers: headers(DEMO_USERS[4].id) })).statusCode).toBe(404);
+    expect((await app.inject({ url: `/api/v1/societies/${randomUUID()}/properties`, headers: headers(society.id) })).statusCode).toBe(404);
+    expect(await db.otpChallenge.count()).toBe(0);
+    expect(await db.refreshToken.count()).toBe(0);
+    expect(await db.user.count()).toBe(8);
+  });
+  it('disables every credential endpoint without creating, consuming, rotating or revoking credentials', async () => {
+    const token = await existingRefresh(resident.id);
+    const challenge = await db.otpChallenge.create({ data: { phone: resident.phone, codeHash: hmac(`${resident.phone}:123456`, secret), expiresAt: new Date(Date.now() + 300000) } });
+    const storedToken = await db.refreshToken.findFirstOrThrow();
+    await openDemo();
+    for (const [path, payload] of [
+      ['otp/request', { phone: resident.phone }], ['otp/verify', { phone: resident.phone, code: '123456' }],
+      ['refresh', { refreshToken: token }], ['logout', { refreshToken: token }],
+    ] as const) {
+      const result = await app.inject({ method: 'POST', url: `/api/v1/auth/${path}`, payload });
+      expect(result.statusCode, result.body).toBe(403);
+      expect(result.json().error.code).toBe('AUTH_DISABLED');
+    }
+    expect(await db.otpChallenge.findMany()).toEqual([challenge]);
+    expect(await db.refreshToken.findMany()).toEqual([storedToken]);
+  });
+  it('forwards the token-free role into exception batches and retains device and QR verification', async () => {
+    await openDemo();
+    const collector = await db.collector.create({ data: { ulbId: DEMO_ULB_ID, contractorId: demoId('contractor-0'), userId: DEMO_USERS[2].id, employeeCode: 'OPEN-DEMO-C1' } });
+    const route = await db.route.create({ data: { ulbId: DEMO_ULB_ID, contractorId: collector.contractorId, collectorId: collector.id, wardId: demoId('ward-0'), name: 'Open demo exception fixture', date: new Date(istDate()) } });
+    const stop = await db.routeStop.create({ data: { ulbId: DEMO_ULB_ID, routeId: route.id, propertyId: demoId('property-0'), sequence: 1, windowStart: new Date(), windowEnd: new Date(Date.now() + 3600000), streams: ['WET'] } });
+    const photo = await db.photo.create({ data: { ulbId: DEMO_ULB_ID, ownerId: collector.userId, kind: 'EXCEPTION', captureSource: 'CAMERA', storageKey: `fixture-${randomUUID()}`, expiresAt: new Date(Date.now() + 3600000) } });
+    const payload = { client_uuid: randomUUID(), propertyId: stop.propertyId, routeStopId: stop.id, deviceId: 'unbound-device', qrToken: 'tampered', capturedAt: new Date().toISOString(), latitude: 18, longitude: 73, accuracyM: 10, gpsCapturedAt: new Date().toISOString(), offline: false, streams: [], exception: { code: 'NOT_OUT', note: 'Fixture exception', photoId: photo.id } };
+    const options = { method: 'POST' as const, url: `/api/v1/collector/stops/${stop.id}/exception`, headers: { ...headers(DEMO_USERS[2].id), 'idempotency-key': randomUUID() }, payload };
+    const response = await app.inject(options);
+    expect(response.statusCode, response.body).toBe(422);
+    expect(response.json().results[0].verificationReasons.map((reason: { code: string }) => reason.code)).toEqual(expect.arrayContaining(['DEVICE_NOT_BOUND', 'INVALID_QR']));
+    expect((await app.inject(options)).json()).toEqual(response.json());
+    expect(await db.pickupEvent.count({ where: { ulbId: DEMO_ULB_ID, clientUuid: payload.client_uuid, collectorId: collector.id, status: 'REJECTED' } })).toBe(1);
+    expect(await db.otpChallenge.count()).toBe(0);
+    expect(await db.refreshToken.count()).toBe(0);
   });
 });

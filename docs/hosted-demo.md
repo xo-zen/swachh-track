@@ -1,16 +1,18 @@
 # Limited Free Hosted Demo
 
-This is a shared, fictional demonstration, not production or an always-on pilot. The deployment definition is ready for a live infrastructure trial; no public service has been deployed.
+This is a shared, fictional no-login demonstration, not production or an always-on pilot. Anyone can select the five demo roles, including society and ULB admin, and mutate shared fictional records; these are not visitor identities. Never use real data. The deployment definition is ready for a live infrastructure trial; no public service has been deployed.
 
 ## Architecture
 
 - One Render **Free** Docker web service, using `Dockerfile.render` and `render.yaml`.
 - Production-built Next listens on Render's public `PORT` (default 10000). Its same-origin `/api/v1` rewrite reaches Fastify at `127.0.0.1:4000`.
-- Fastify and seed run with explicit `NODE_ENV=development`, `DEMO_MODE=true`, `HOSTED_DEMO=true`. Existing production rejection of demo authentication remains intact.
+- Fastify and seed run with explicit `NODE_ENV=development`, `DEMO_MODE=true`, `HOSTED_DEMO=true`. `render.yaml` sets `NO_AUTH=true`; the launcher also defaults it to true unless explicitly false. Open demo requires development/demo mode; production rejection remains intact.
 - Supabase PostgreSQL and a private S3-compatible bucket hold persistent data. No Render database or persistent disk.
 - No Redis or worker is started. Notifications remain pending; notification delivery, scheduled reminders and automatic SLA escalation do not run. Request-time metrics and manual workflows still work.
 
-`NEXT_PUBLIC_HOSTED_DEMO=true` is a presentation-only build flag. It exposes the five seeded role shortcuts and visible demo warnings; it never enables backend authentication. Ordinary production builds retain the existing demo-shortcut guard.
+Web and collector discover `open-demo` or `authenticated` through public `GET /api/v1/access`; no frontend mode flag is needed. Web opens as resident, offers a five-role dropdown, remembers only the alias in `sessionStorage` and reloads without login. The collector opens as collector, retaining device registration and its offline queue. API calls use `X-Demo-Role` without tokens; OTP/refresh are skipped and logout is hidden.
+
+`NEXT_PUBLIC_HOSTED_DEMO=true` remains a presentation-only build flag, not an access switch. Explicit `NO_AUTH=false` retains the shipped OTP/token flow and hosted identity restrictions. Plain API configuration defaults `NO_AUTH` to false; both standard and compact fictional seeds support open demo.
 
 ## Required Decisions
 
@@ -24,7 +26,7 @@ Before provisioning, confirm which dedicated project to use and its free plan. O
 2. This application uses Prisma, not Supabase's Data API. Disable the Data API for the dedicated project, or isolate/revoke public access to the application tables before applying migrations. Existing Fastify tenant checks do not secure a separate exposed REST API; the migrations do not add Supabase RLS policies.
 3. Precreate a **private** bucket. Copy the Supabase S3 endpoint (including `/storage/v1/s3`), region, and generated S3 access key/secret. These keys bypass Storage RLS; never expose them to the browser. Do not substitute anon/service-role JWTs for S3 credentials.
 4. Configure both `S3_ENDPOINT` and `S3_PUBLIC_ENDPOINT`; for Supabase they normally have the same HTTPS value. The startup preflight requires both explicitly. Confirm real browser upload/read behavior; Supabase does not support the generic S3 `PutBucketCors` operation.
-5. Verify an unsigned object URL cannot read an object, while the application's authenticated short-lived signed read succeeds. `HeadBucket` proves accessibility, not privacy or CORS.
+5. Verify an unsigned object URL cannot read an object, while the application's role-scoped short-lived signed read succeeds. No-login access does not make storage public or remove file/QR signing keys. `HeadBucket` proves accessibility, not privacy or CORS.
 
 ## Render Configuration
 
@@ -33,6 +35,7 @@ Create only the service in `render.yaml`; its `plan` is `free`. Do not add a bac
 | Setting | Value |
 | --- | --- |
 | `HOSTED_DEMO`, `DEMO_MODE` | `true`, `true` |
+| `NO_AUTH` | `true` for no-login access; explicitly `false` to retain OTP/token access |
 | `STORAGE_DRIVER` | `s3` |
 | `DATABASE_URL` | Dedicated database URL, server-side secret |
 | `JWT_SECRET`, `QR_SECRET` | Independent generated values, at least 32 characters; keep stable |
@@ -47,11 +50,13 @@ Startup runs S3 **check-only**, `prisma migrate deploy`, compact seed, API readi
 
 ## Compact Fixtures
 
-Hosted seed: five primary societies, 30 properties, seven historical days, 210 pickup events, 24 dated routes / 240 stops, 408 synthetic photos and five documents. Five seeded login identities are permitted; altered users/memberships, unseeded users and profile/invitation/deactivation mutations are rejected. Visitors can still change shared fictional business records.
+Hosted seed: five primary societies, 30 properties, seven historical days, 210 pickup events, 24 dated routes / 240 stops, 408 synthetic photos and five documents. Only the five exact active seeded identities/memberships and their tenant/scope are permitted; altered identities, unseeded users, `SUPER_ADMIN`, cross-tenant access and profile/invitation/activation/deactivation mutations are rejected. Visitors can still change shared fictional business records.
 
 The default local seed remains 240 properties and 7,200 historical events. Hosted seed refuses incompatible standard-profile or tenant data, can resume partial initialization, and skips completed seeds without overwriting edits. It does not refresh dates or restore deleted objects on every restart. Use only fictional uploads; seed completion does not guarantee indefinite free storage under public traffic.
 
 ## Executed Checks
+
+The following is historical authenticated-demo evidence, not verification of the new no-login flow. This documentation update did not rerun these checks. Existing `tests/hosted-demo.e2e.mjs` and `tests/web.e2e.mjs` require the API to run with `NO_AUTH=false`; see [test-mode guidance](../tests/README.md#access-modes) for planned separate no-login coverage.
 
 2026-10-25: fresh disposable local PostgreSQL 16; all three migrations; lint; six package typechecks; **29 files / 436 tests / zero skips**. This includes 26 core API tests, 38 hosted-auth integration tests, 22 seed tests and 68 deployment tests. Test databases were dropped after verification; existing `swachh` was not reset.
 

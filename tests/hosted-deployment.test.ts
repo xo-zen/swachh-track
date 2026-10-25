@@ -19,6 +19,12 @@ const base = {
 };
 
 describe('hosted environment boundaries', () => {
+  it('defaults to no-login for the demo API, not the production web process', () => {
+    expect(hostedEnvironments(base).api.NO_AUTH).toBe('true');
+    expect(hostedEnvironments(base).web.NO_AUTH).toBe('false');
+    expect(hostedEnvironments({ ...base, NO_AUTH: 'false' }).api.NO_AUTH).toBe('false');
+    expect(() => hostedEnvironments({ ...base, NO_AUTH: '1' })).toThrow('NO_AUTH');
+  });
   it('uses a production web process and a loopback-only development demo API', () => {
     const input = { ...base, HOST: '0.0.0.0', CORS_ORIGINS: '*', API_INTERNAL_URL: 'https://wrong.invalid', NEXT_PUBLIC_DEMO_MODE: 'true' };
     const { api, web } = hostedEnvironments(input);
@@ -265,6 +271,7 @@ describe('Render deployment contract', () => {
     expect(yaml.match(/- type:/g)).toHaveLength(1);
     for (const value of ['type: web', 'runtime: docker', 'plan: free', 'dockerfilePath: ./Dockerfile.render', 'healthCheckPath: /api/v1/readyz']) expect(yaml).toContain(value);
     expect(yaml).not.toMatch(/preDeployCommand|databases:|disk:|redis|keyvalue|type: worker/i);
+    expect(yaml).toMatch(/key: NO_AUTH\s+value: "true"/);
     for (const key of ['JWT_SECRET', 'QR_SECRET']) expect(yaml).toMatch(new RegExp(`key: ${key}\\s+generateValue: true`));
     for (const key of ['DATABASE_URL', 'S3_ENDPOINT', 'S3_PUBLIC_ENDPOINT', 'S3_REGION', 'S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY']) expect(yaml).toMatch(new RegExp(`key: ${key}\\s+sync: false`));
   });
