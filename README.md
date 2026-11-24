@@ -30,28 +30,28 @@ Swachh-Track provides a unified digital platform that helps residents segregate 
 
 # 🔄 How It Works
 
-Residents log their waste details.
-Residents display their household QR code.
-Collectors scan and verify the pickup.
-Collection records are updated.
-Administrators monitor compliance through reports.
+- Residents log their waste details.
+- Residents display their household QR code.
+- Collectors scan and verify the pickup.
+- Collection records are updated.
+- Administrators monitor compliance through reports.
 
 # 🎯 Target Users
 
-Housing society residents
-Waste collectors
-Society administrators
-Resident Welfare Associations (RWAs)
-Municipal bodies and campuses
+- Housing society residents
+- Waste collectors
+- Society administrators
+- Resident Welfare Associations (RWAs)
+- Municipal bodies and campuses
 
 # 🌱 Future Scope
 
-Real-time municipal integration
-Multi-language support
-Smart notifications and reminders
-Advanced waste analytics
-Reward and incentive systems
-Deployment across multiple housing societies
+- Real-time municipal integration
+- Multi-language support
+- Smart notifications and reminders
+- Advanced waste analytics
+- Reward and incentive systems
+- Deployment across multiple housing societies
 
 ## Current Evidence
 
