@@ -2,6 +2,8 @@
 
 An evidence-first municipal waste-collection pilot: an Android-first Expo collector app, a role-scoped web console, and a Fastify/PostgreSQL API. This repository implements the workflows below, not a production-certified civic platform.
 
+Demo app link: https://swachh-track.netlify.app
+
 ## Current Evidence
 
 **No-login demo update, 2026-10-25:** both apps discover tokenless open-demo access from the API. The setup below enables it by default. Verification passed **30 test files / 582 tests / one mode-specific skip**, lint, all six package typechecks, the production web build and Expo compatibility. Ten scripted browser checks passed, plus a separate outage/retry check. Native Android and public deployment remain unverified. See [no-login behavior and verification](docs/no-login.md). The results below are earlier, separate snapshots.
