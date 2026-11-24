@@ -4,6 +4,55 @@ An evidence-first municipal waste-collection pilot: an Android-first Expo collec
 
 Demo app link: https://swachh-track.netlify.app
 
+📌 About the Project
+
+Swachh-Track is a smart waste management platform designed to improve waste segregation, collection monitoring and accountability in housing societies.
+
+It connects residents, waste collectors and administrators through a single platform, making waste collection more transparent and organized.
+
+# 🚨 Problem Statement
+
+Traditional waste management systems often depend on manual registers, reminders and WhatsApp communication. This makes it difficult to verify waste collection, monitor segregation and maintain accurate compliance records.
+
+# 💡 Our Solution
+
+Swachh-Track provides a unified digital platform that helps residents segregate waste, allows collectors to verify pickups and enables administrators to monitor society-wide compliance.
+
+# ✨ Key Features
+
+Three Role-Based Portals: Resident, Collector and Admin.
+Smart Waste Segregation: Wet, dry and hazardous waste logging.
+QR-Based Pickup Verification: Door QR scanning for collection verification.
+AI Segregation Camera: Camera-based waste segregation support.
+Route Tracking: Track waste collection routes.
+Rankings: Encourage responsible waste management.
+PDF Compliance Reports: Downloadable compliance reports.
+
+# 🔄 How It Works
+
+Residents log their waste details.
+Residents display their household QR code.
+Collectors scan and verify the pickup.
+Collection records are updated.
+Administrators monitor compliance through reports.
+
+# 🎯 Target Users
+
+Housing society residents
+Waste collectors
+Society administrators
+Resident Welfare Associations (RWAs)
+Municipal bodies and campuses
+
+# 🌱 Future Scope
+
+Real-time municipal integration
+Multi-language support
+Smart notifications and reminders
+Advanced waste analytics
+Reward and incentive systems
+Deployment across multiple housing societies
+
 ## Current Evidence
 
 **No-login demo update, 2026-10-25:** both apps discover tokenless open-demo access from the API. The setup below enables it by default. Verification passed **30 test files / 582 tests / one mode-specific skip**, lint, all six package typechecks, the production web build and Expo compatibility. Ten scripted browser checks passed, plus a separate outage/retry check. Native Android and public deployment remain unverified. See [no-login behavior and verification](docs/no-login.md). The results below are earlier, separate snapshots.
