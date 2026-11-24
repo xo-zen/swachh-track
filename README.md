@@ -20,13 +20,13 @@ Swachh-Track provides a unified digital platform that helps residents segregate 
 
 # ✨ Key Features
 
--Three Role-Based Portals: Resident, Collector and Admin.
--Smart Waste Segregation: Wet, dry and hazardous waste logging.
--QR-Based Pickup Verification: Door QR scanning for collection verification.
--AI Segregation Camera: Camera-based waste segregation support.
--Route Tracking: Track waste collection routes.
--Rankings: Encourage responsible waste management.
--PDF Compliance Reports: Downloadable compliance reports.
+- Three Role-Based Portals: Resident, Collector and Admin.
+- Smart Waste Segregation: Wet, dry and hazardous waste logging.
+- QR-Based Pickup Verification: Door QR scanning for collection verification.
+- AI Segregation Camera: Camera-based waste segregation support.
+- Route Tracking: Track waste collection routes.
+- Rankings: Encourage responsible waste management.
+- PDF Compliance Reports: Downloadable compliance reports.
 
 # 🔄 How It Works
 
